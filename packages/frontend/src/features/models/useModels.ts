@@ -1,10 +1,9 @@
 import { useState } from "react";
 import { trpcReact as trpcHooks } from "@/lib/trpc";
-import type { ModelResponse } from "./api";
 
 export type ModelTypeFilter = "all" | "real" | "virtual";
 
-function parseDependents(error: unknown): string[] | null {
+export function parseDependents(error: unknown): string[] | null {
   const msg = error instanceof Error ? error.message : String(error);
   const match = msg.match(/HAS_DEPENDENTS:(.+)/);
   if (!match) return null;
@@ -33,7 +32,8 @@ export function useModels() {
     }
   };
 
-  const models = ((query.data ?? []) as ModelResponse[]).filter((m) => {
+  const rawModels = query.data ?? [];
+  const models = rawModels.filter((m) => {
     if (typeFilter === "all") return true;
     if (typeFilter === "real") return m.type === "real";
     return m.type === "virtual";

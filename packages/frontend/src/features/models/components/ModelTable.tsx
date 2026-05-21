@@ -1,7 +1,7 @@
-import type { ModelResponse } from "../api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import type { ModelResponse } from "../api";
 
 interface ModelTableProps {
   models: ModelResponse[];
@@ -9,17 +9,10 @@ interface ModelTableProps {
   onClickRow: (id: string) => void;
 }
 
-function typeBadge(model: ModelResponse) {
-  if (model.type === "real") {
-    return <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300">Real</Badge>;
-  }
-  const variantLabel = model.variant === "fallback" ? "Fallback" : "Tuned";
-  return (
-    <div className="flex items-center gap-1">
-      <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">Virtual</Badge>
-      <Badge variant="outline">{variantLabel}</Badge>
-    </div>
-  );
+function variantBadge(model: ModelResponse) {
+  if (model.type === "real") return null;
+  const label = model.variant === "fallback" ? "Fallback" : "Tuned";
+  return <Badge variant="outline">{label}</Badge>;
 }
 
 export function ModelTable({ models, onDelete, onClickRow }: ModelTableProps) {
@@ -31,8 +24,10 @@ export function ModelTable({ models, onDelete, onClickRow }: ModelTableProps) {
     <Table>
       <TableHeader>
         <TableRow>
+          <TableHead>ID</TableHead>
           <TableHead>Display Name</TableHead>
           <TableHead>Type</TableHead>
+          <TableHead>Variant</TableHead>
           <TableHead>Provider</TableHead>
           <TableHead className="text-right">Actions</TableHead>
         </TableRow>
@@ -40,8 +35,16 @@ export function ModelTable({ models, onDelete, onClickRow }: ModelTableProps) {
       <TableBody>
         {models.map((m) => (
           <TableRow key={m.id} className="cursor-pointer" onClick={() => onClickRow(m.id)}>
+            <TableCell className="font-mono text-xs">{m.id.length > 8 ? `${m.id.slice(0, 8)}…` : m.id}</TableCell>
             <TableCell className="font-medium">{m.displayName || m.id}</TableCell>
-            <TableCell>{typeBadge(m)}</TableCell>
+            <TableCell>
+              {m.type === "real" ? (
+                <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300">Real</Badge>
+              ) : (
+                <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">Virtual</Badge>
+              )}
+            </TableCell>
+            <TableCell>{variantBadge(m)}</TableCell>
             <TableCell className="text-muted-foreground">
               {m.type === "real" ? m.providerModel : "—"}
             </TableCell>

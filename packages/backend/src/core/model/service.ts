@@ -3,6 +3,7 @@ import { models } from "../../db/schema/models.js";
 import { providers } from "../../db/schema/providers.js";
 import type { DbClient } from "../../db/connection.js";
 import { ModelResolver } from "./resolver.js";
+import type { Model, Provider } from "@rel-ai/shared";
 
 export type ModelRow = typeof models.$inferSelect;
 
@@ -78,6 +79,20 @@ function deserializeModel(row: ModelRow): ModelResponse {
   };
 }
 
+function deserializeProvider(row: typeof providers.$inferSelect): Provider {
+  return {
+    id: row.id,
+    name: row.name,
+    adapterType: row.adapterType as Provider["adapterType"],
+    baseUrl: row.baseUrl,
+    apiKey: row.apiKey,
+    enabled: row.enabled,
+    config: row.config ? JSON.parse(row.config) : undefined,
+    createdAt: new Date(row.createdAt),
+    updatedAt: new Date(row.updatedAt),
+  };
+}
+
 function detectCircular(
   modelId: string,
   fallbackChain: string[],
@@ -128,17 +143,19 @@ export function createRealModel(
   if (existing) throw new Error("DUPLICATE_ID");
 
   const now = new Date().toISOString().replace("T", " ").split(".")[0]!;
-  db.insert(models)
-    .values({
-      id: input.id,
-      displayName: input.displayName ?? input.id,
-      type: "real",
-      providerId: input.providerId,
-      providerModel: input.providerModel,
-      createdAt: now,
-      updatedAt: now,
-    })
-    .run();
+  db.transaction((tx) => {
+    tx.insert(models)
+      .values({
+        id: input.id,
+        displayName: input.displayName ?? input.id,
+        type: "real",
+        providerId: input.providerId,
+        providerModel: input.providerModel,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run();
+  });
 
   const row = db.select().from(models).where(eq(models.id, input.id)).get()!;
   return deserializeModel(row);
@@ -173,17 +190,19 @@ export function createVirtualFallbackModel(
   if (isCircular) throw new Error("CIRCULAR_DEPENDENCY");
 
   const now = new Date().toISOString().replace("T", " ").split(".")[0]!;
-  db.insert(models)
-    .values({
-      id: input.id,
-      displayName: input.displayName ?? input.id,
-      type: "virtual",
-      variant: "fallback",
-      fallbackChain: JSON.stringify(input.fallbackChain),
-      createdAt: now,
-      updatedAt: now,
-    })
-    .run();
+  db.transaction((tx) => {
+    tx.insert(models)
+      .values({
+        id: input.id,
+        displayName: input.displayName ?? input.id,
+        type: "virtual",
+        variant: "fallback",
+        fallbackChain: JSON.stringify(input.fallbackChain),
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run();
+  });
 
   const row = db.select().from(models).where(eq(models.id, input.id)).get()!;
   return deserializeModel(row);
@@ -207,18 +226,20 @@ export function createVirtualTunedModel(
   }
 
   const now = new Date().toISOString().replace("T", " ").split(".")[0]!;
-  db.insert(models)
-    .values({
-      id: input.id,
-      displayName: input.displayName ?? input.id,
-      type: "virtual",
-      variant: "tuned",
-      baseModelId: input.baseModelId,
-      overrides: input.overrides ? JSON.stringify(input.overrides) : null,
-      createdAt: now,
-      updatedAt: now,
-    })
-    .run();
+  db.transaction((tx) => {
+    tx.insert(models)
+      .values({
+        id: input.id,
+        displayName: input.displayName ?? input.id,
+        type: "virtual",
+        variant: "tuned",
+        baseModelId: input.baseModelId,
+        overrides: input.overrides ? JSON.stringify(input.overrides) : null,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run();
+  });
 
   const row = db.select().from(models).where(eq(models.id, input.id)).get()!;
   return deserializeModel(row);
@@ -295,7 +316,9 @@ export function updateModel(
   const now = new Date().toISOString().replace("T", " ").split(".")[0]!;
   updates.updatedAt = now;
 
-  db.update(models).set(updates).where(eq(models.id, input.id)).run();
+  db.transaction((tx) => {
+    tx.update(models).set(updates).where(eq(models.id, input.id)).run();
+  });
 
   const row = db.select().from(models).where(eq(models.id, input.id)).get()!;
   return deserializeModel(row);
@@ -311,7 +334,9 @@ export function deleteModel(db: DbClient, id: string): { success: boolean } {
     throw new Error(`HAS_DEPENDENTS:${dependents.join(",")}`);
   }
 
-  db.delete(models).where(eq(models.id, id)).run();
+  db.transaction((tx) => {
+    tx.delete(models).where(eq(models.id, id)).run();
+  });
   return { success: true };
 }
 
@@ -323,11 +348,11 @@ export function testResolution(
   const allProviders = db.select().from(providers).all();
 
   const modelMap = new Map(allModels.map((m) => [m.id, deserializeModel(m)]));
-  const providerMap = new Map(allProviders.map((p) => [p.id, p]));
+  const providerMap = new Map(allProviders.map((p) => [p.id, deserializeProvider(p)]));
 
   const resolver = new ModelResolver({
-    getModel: (id) => modelMap.get(id) as any,
-    getProvider: (id) => providerMap.get(id) as any,
+    getModel: (id) => modelMap.get(id) as Model | undefined,
+    getProvider: (id) => providerMap.get(id) as Provider | undefined,
   });
 
   const resolved = resolver.resolve(modelId);

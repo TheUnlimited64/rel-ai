@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure } from "../trpc.js";
 import {
   createRealModel,
@@ -52,23 +53,54 @@ const TestResolutionInputSchema = z.object({
   id: z.string().min(1),
 });
 
+function mapServiceError<T>(fn: () => T | Promise<T>): Promise<T> {
+  try {
+    return Promise.resolve(fn());
+  } catch (e) {
+    if (e instanceof Error) {
+      const msg = e.message;
+      if (
+        msg === "NOT_FOUND" ||
+        msg.startsWith("MODEL_NOT_FOUND") ||
+        msg === "PROVIDER_NOT_FOUND" ||
+        msg === "BASE_MODEL_NOT_FOUND"
+      ) {
+        throw new TRPCError({ code: "NOT_FOUND", message: msg });
+      }
+      if (msg === "DUPLICATE_ID") {
+        throw new TRPCError({ code: "CONFLICT", message: msg });
+      }
+      if (msg === "CIRCULAR_DEPENDENCY") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: msg });
+      }
+      if (msg === "INVALID_BASE_MODEL") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: msg });
+      }
+      if (msg.startsWith("HAS_DEPENDENTS")) {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: msg });
+      }
+    }
+    throw e;
+  }
+}
+
 export const modelsRouter = createTRPCRouter({
   createReal: protectedProcedure
     .input(CreateRealModelInputSchema)
     .mutation(async ({ ctx, input }) => {
-      return createRealModel(ctx.db, input);
+      return mapServiceError(() => createRealModel(ctx.db, input));
     }),
 
   createVirtualFallback: protectedProcedure
     .input(CreateVirtualFallbackInputSchema)
     .mutation(async ({ ctx, input }) => {
-      return createVirtualFallbackModel(ctx.db, input);
+      return mapServiceError(() => createVirtualFallbackModel(ctx.db, input));
     }),
 
   createVirtualTuned: protectedProcedure
     .input(CreateVirtualTunedInputSchema)
     .mutation(async ({ ctx, input }) => {
-      return createVirtualTunedModel(ctx.db, input);
+      return mapServiceError(() => createVirtualTunedModel(ctx.db, input));
     }),
 
   list: protectedProcedure.query(async ({ ctx }) => {
@@ -78,24 +110,24 @@ export const modelsRouter = createTRPCRouter({
   get: protectedProcedure
     .input(GetModelInputSchema)
     .query(async ({ ctx, input }) => {
-      return getModel(ctx.db, input.id);
+      return mapServiceError(() => getModel(ctx.db, input.id));
     }),
 
   update: protectedProcedure
     .input(UpdateModelInputSchema)
     .mutation(async ({ ctx, input }) => {
-      return updateModel(ctx.db, input);
+      return mapServiceError(() => updateModel(ctx.db, input));
     }),
 
   delete: protectedProcedure
     .input(DeleteModelInputSchema)
     .mutation(async ({ ctx, input }) => {
-      return deleteModel(ctx.db, input.id);
+      return mapServiceError(() => deleteModel(ctx.db, input.id));
     }),
 
   testResolution: protectedProcedure
     .input(TestResolutionInputSchema)
     .mutation(async ({ ctx, input }) => {
-      return testResolution(ctx.db, input.id);
+      return mapServiceError(() => testResolution(ctx.db, input.id));
     }),
 });

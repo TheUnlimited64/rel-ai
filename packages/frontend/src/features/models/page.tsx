@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useModels, type ModelTypeFilter } from "./useModels";
 import { ModelTable } from "./components/ModelTable";
 import { CreateRealModelForm } from "./components/CreateRealModelForm";
 import { CreateVirtualModelForm } from "./components/CreateVirtualModelForm";
+import { ModelDeleteDialog } from "./components/ModelDeleteDialog";
 
 export function ModelsPage() {
   const { models, loading, error, reload, remove, typeFilter, setTypeFilter } = useModels();
@@ -89,40 +90,30 @@ export function ModelsPage() {
 
       <Dialog open={showCreateReal} onOpenChange={setShowCreateReal}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Add Real Model</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Add Real Model</DialogTitle>
+            <DialogDescription>Create a new real model backed by a provider.</DialogDescription>
+          </DialogHeader>
           <CreateRealModelForm onSuccess={() => { setShowCreateReal(false); reload(); }} onCancel={() => setShowCreateReal(false)} />
         </DialogContent>
       </Dialog>
 
       <Dialog open={showCreateVirtual} onOpenChange={setShowCreateVirtual}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Add Virtual Model</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Add Virtual Model</DialogTitle>
+            <DialogDescription>Create a virtual model with fallback chain or tuned overrides.</DialogDescription>
+          </DialogHeader>
           <CreateVirtualModelForm onSuccess={() => { setShowCreateVirtual(false); reload(); }} onCancel={() => setShowCreateVirtual(false)} />
         </DialogContent>
       </Dialog>
 
-      <Dialog open={deleteId !== null} onOpenChange={closeDeleteDialog}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Delete Model</DialogTitle></DialogHeader>
-          {deleteDependents ? (
-            <div className="space-y-2">
-              <p className="text-sm text-destructive">Cannot delete: this model is referenced by other models.</p>
-              <p className="text-sm text-muted-foreground">Dependents: {deleteDependents.join(", ")}</p>
-              <p className="text-sm text-muted-foreground">Remove references first, then try again.</p>
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">Are you sure you want to delete this model?</p>
-          )}
-          <div className="flex justify-end gap-2 pt-4">
-            <Button variant="outline" onClick={closeDeleteDialog}>
-              {deleteDependents ? "Close" : "Cancel"}
-            </Button>
-            {!deleteDependents && (
-              <Button variant="destructive" onClick={handleDelete}>Delete</Button>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+      <ModelDeleteDialog
+        open={deleteId !== null}
+        onOpenChange={(open) => { if (!open) closeDeleteDialog(); }}
+        dependents={deleteDependents}
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }

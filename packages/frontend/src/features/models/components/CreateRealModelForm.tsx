@@ -1,9 +1,19 @@
-import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { trpcReact as trpcHooks } from "@/lib/trpc";
+
+const formSchema = z.object({
+  id: z.string().min(1, "Model ID is required"),
+  displayName: z.string().optional(),
+  providerId: z.string().min(1, "Provider is required"),
+  providerModel: z.string().min(1, "Provider model name is required"),
+});
+type FormValues = z.infer<typeof formSchema>;
 
 interface CreateRealModelFormProps {
   onSuccess: () => void;
@@ -11,52 +21,45 @@ interface CreateRealModelFormProps {
 }
 
 export function CreateRealModelForm({ onSuccess, onCancel }: CreateRealModelFormProps) {
-  const [id, setId] = useState("");
-  const [displayName, setDisplayName] = useState("");
-  const [providerId, setProviderId] = useState("");
-  const [providerModel, setProviderModel] = useState("");
-  const [error, setError] = useState<string | null>(null);
-
   const utils = trpcHooks.useUtils();
   const { data: providers } = trpcHooks.providers.list.useQuery();
+  const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<FormValues>({
+    resolver: zodResolver(formSchema),
+    defaultValues: { id: "", displayName: "", providerId: "", providerModel: "" },
+  });
+  const providerId = watch("providerId");
+
   const createMutation = trpcHooks.models.createReal.useMutation({
     onSuccess: async () => {
       await utils.models.list.invalidate();
       onSuccess();
     },
-    onError: (err) => {
-      setError(err.message);
-    },
   });
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    if (!providerId) {
-      setError("Please select a provider");
-      return;
-    }
+  function onSubmit(data: FormValues) {
     createMutation.mutate({
-      id,
-      providerId,
-      providerModel,
-      displayName: displayName || undefined,
+      id: data.id,
+      providerId: data.providerId,
+      providerModel: data.providerModel,
+      displayName: data.displayName || undefined,
     });
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
       <div className="space-y-2">
         <Label htmlFor="real-id">Model ID</Label>
-        <Input id="real-id" value={id} onChange={(e) => setId(e.target.value)} required placeholder="gpt-4o" />
+        <Input id="real-id" {...register("id")} placeholder="gpt-4o" />
+        {errors.id && <p className="text-xs text-destructive">{errors.id.message}</p>}
       </div>
       <div className="space-y-2">
         <Label htmlFor="real-display">Display Name</Label>
-        <Input id="real-display" value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="GPT-4o" />
+        <Input id="real-display" {...register("displayName")} placeholder="GPT-4o" />
+        {errors.displayName && <p className="text-xs text-destructive">{errors.displayName.message}</p>}
       </div>
       <div className="space-y-2">
         <Label>Provider</Label>
-        <Select value={providerId} onValueChange={(v) => { if (v) setProviderId(v); }}>
+        <Select value={providerId} onValueChange={(v) => { if (v) setValue("providerId", v, { shouldValidate: true }); }}>
           <SelectTrigger><SelectValue placeholder="Select provider" /></SelectTrigger>
           <SelectContent>
             {providers?.map((p) => (
@@ -64,15 +67,17 @@ export function CreateRealModelForm({ onSuccess, onCancel }: CreateRealModelForm
             ))}
           </SelectContent>
         </Select>
+        {errors.providerId && <p className="text-xs text-destructive">{errors.providerId.message}</p>}
         {!providers || providers.length === 0 ? (
           <p className="text-xs text-muted-foreground">No providers available. Create one first.</p>
         ) : null}
       </div>
       <div className="space-y-2">
         <Label htmlFor="real-provider-model">Provider Model Name</Label>
-        <Input id="real-provider-model" value={providerModel} onChange={(e) => setProviderModel(e.target.value)} required placeholder="gpt-4o-2024-08-06" />
+        <Input id="real-provider-model" {...register("providerModel")} placeholder="gpt-4o-2024-08-06" />
+        {errors.providerModel && <p className="text-xs text-destructive">{errors.providerModel.message}</p>}
       </div>
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {createMutation.error && <p className="text-sm text-destructive">{createMutation.error.message}</p>}
       <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
         <Button type="submit" disabled={createMutation.isPending}>{createMutation.isPending ? "Creating..." : "Create"}</Button>
