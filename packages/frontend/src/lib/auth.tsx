@@ -32,6 +32,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY);
     setToken(null);
+    // Full reload to clear all client state (security)
+    window.location.href = "/login";
   }, []);
 
   return (
@@ -59,7 +61,9 @@ export function RequireAuth({ children }: { children: ReactNode }) {
     }
   }, [isAuthenticated, navigate]);
 
-  if (!isAuthenticated) return null;
+  if (!isAuthenticated) {
+    return <div style={{ textAlign: "center", padding: "2rem" }}>Loading...</div>;
+  }
   return <>{children}</>;
 }
 
@@ -73,6 +77,8 @@ export function RedirectIfAuth({ children }: { children: ReactNode }) {
     }
   }, [isAuthenticated, navigate]);
 
-  if (isAuthenticated) return null;
+  if (isAuthenticated) {
+    return <div style={{ textAlign: "center", padding: "2rem" }}>Loading...</div>;
+  }
   return <>{children}</>;
 }

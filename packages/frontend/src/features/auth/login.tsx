@@ -1,35 +1,40 @@
-import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { useNavigate } from "react-router-dom";
+import { useMutation } from "@tanstack/react-query";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 
+const schema = z.object({ token: z.string().min(1, "Token is required") });
+type FormValues = z.infer<typeof schema>;
+
 export function LoginPage() {
-  const [tokenInput, setTokenInput] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    setLoading(true);
+  const {
+    register,
+    handleSubmit,
+    setError,
+    formState: { errors, isSubmitting },
+  } = useForm<FormValues>({ resolver: zodResolver(schema) });
 
-    try {
-      const result = await trpc.auth.verifyToken.query({ token: tokenInput });
+  const verifyMutation = useMutation({
+    mutationFn: (data: { token: string }) => trpc.auth.verifyToken.query(data),
+    onSuccess: (result, variables) => {
       if (result.valid) {
-        login(tokenInput);
+        login(variables.token);
         navigate("/providers", { replace: true });
       } else {
-        setError("Invalid token. Please check and try again.");
+        setError("token", { message: "Invalid token. Please check and try again." });
       }
-    } catch {
-      setError("Invalid token. Please check and try again.");
-    } finally {
-      setLoading(false);
-    }
-  }
+    },
+    onError: () => {
+      setError("token", { message: "Invalid token. Please check and try again." });
+    },
+  });
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background">
@@ -40,27 +45,21 @@ export function LoginPage() {
             Enter your bearer token to sign in.
           </p>
         </div>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit((d) => verifyMutation.mutate(d))} className="space-y-4">
           <div className="space-y-2">
             <input
               type="password"
-              value={tokenInput}
-              onChange={(e) => setTokenInput(e.target.value)}
+              {...register("token")}
               placeholder="Bearer token"
               className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               autoFocus
-              required
             />
           </div>
-          {error && (
-            <p className="text-sm text-destructive">{error}</p>
+          {errors.token && (
+            <p className="text-sm text-destructive">{errors.token.message}</p>
           )}
-          <Button
-            type="submit"
-            className="w-full"
-            disabled={loading || !tokenInput.trim()}
-          >
-            {loading ? "Signing in..." : "Sign In"}
+          <Button type="submit" className="w-full" disabled={verifyMutation.isPending}>
+            {verifyMutation.isPending ? "Signing in..." : "Sign In"}
           </Button>
         </form>
       </div>

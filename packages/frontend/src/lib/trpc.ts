@@ -4,11 +4,13 @@ import type { AppRouter } from "@rel-ai/backend";
 
 const TOKEN_KEY = "rel_ai_token";
 
+let redirecting = false;
 function customFetch(url: RequestInfo | URL, options?: RequestInit) {
   return fetch(url, options).then((response) => {
-    if (response.status === 401 && !window.location.pathname.startsWith("/login")) {
+    if (response.status === 401 && !window.location.pathname.startsWith("/login") && !redirecting) {
+      redirecting = true;
       localStorage.removeItem(TOKEN_KEY);
-      window.location.href = "/login";
+      window.location.replace("/login");
     }
     return response;
   });
