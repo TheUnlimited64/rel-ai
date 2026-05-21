@@ -1,7 +1,8 @@
 import type { tRPCContext } from "../context.js";
 
 /**
- * Auth middleware logic extracted to separate file for maintainability.
+ * Auth middleware for protected procedures.
+ * Validates that the request has a valid bearer token.
  */
 export const authMiddleware = <T extends { ctx: tRPCContext; next: (...args: any[]) => any }>(
   opts: T,
