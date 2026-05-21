@@ -1,0 +1,12 @@
+{
+  "name": "@rel-ai/frontend",
+  "version": "0.0.1",
+  "private": true,
+  "main": "src/index.ts",
+  "scripts": {
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@rel-ai/shared": "workspace:*"
+  }
+}
