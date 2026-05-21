@@ -1,13 +1,7 @@
-export type TokenResponse = {
-  id: string;
-  name: string;
-  tokenHash: string;
-  createdAt: string;
-  lastUsedAt: string | null;
-};
+import type { inferRouterOutputs } from "@trpc/server";
+import type { AppRouter } from "@rel-ai/backend";
 
-export type CreateTokenResponse = {
-  id: string;
-  name: string;
-  token: string;
-};
+type RouterOutputs = inferRouterOutputs<AppRouter>;
+
+export type TokenResponse = RouterOutputs["auth"]["listTokens"][number];
+export type CreateTokenResponse = RouterOutputs["auth"]["createToken"];

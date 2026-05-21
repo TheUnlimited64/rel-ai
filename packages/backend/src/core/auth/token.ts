@@ -33,11 +33,13 @@ export async function validateToken(
   token: string,
 ): Promise<typeof authTokens.$inferSelect | null> {
   const hash = await hashToken(token);
-  const row = db.select().from(authTokens).where(eq(authTokens.tokenHash, hash)).get();
-  if (!row) return null;
-  db.update(authTokens)
-    .set({ lastUsedAt: new Date().toISOString() })
-    .where(eq(authTokens.id, row.id))
-    .run();
-  return row;
+  return db.transaction(async (tx) => {
+    const row = tx.select().from(authTokens).where(eq(authTokens.tokenHash, hash)).get();
+    if (!row) return null;
+    tx.update(authTokens)
+      .set({ lastUsedAt: new Date().toISOString() })
+      .where(eq(authTokens.id, row.id))
+      .run();
+    return row;
+  });
 }

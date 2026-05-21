@@ -17,9 +17,13 @@ export function LoginPage() {
     setLoading(true);
 
     try {
-      await trpc.auth.listTokens.query();
-      login(tokenInput);
-      navigate("/providers", { replace: true });
+      const result = await trpc.auth.verifyToken.query({ token: tokenInput });
+      if (result.valid) {
+        login(tokenInput);
+        navigate("/providers", { replace: true });
+      } else {
+        setError("Invalid token. Please check and try again.");
+      }
     } catch {
       setError("Invalid token. Please check and try again.");
     } finally {
