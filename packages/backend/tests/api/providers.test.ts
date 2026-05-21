@@ -1,11 +1,12 @@
 import { describe, expect, test, beforeEach } from "bun:test";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
+import { eq } from "drizzle-orm";
 import { createMemoryDb } from "../../src/db/connection.js";
 import { authTokens } from "../../src/db/schema/auth_tokens.js";
 import { providers } from "../../src/db/schema/providers.js";
 import { models } from "../../src/db/schema/models.js";
 import { hashToken } from "../../src/core/auth/token.js";
-import { resetEncryptionKey } from "../../src/core/auth/encryption.js";
+import { resetEncryptionKey, decrypt } from "../../src/core/auth/encryption.js";
 import { appRouter } from "../../src/api/router.js";
 import type { tRPCContext } from "../../src/api/context.js";
 
@@ -217,6 +218,26 @@ describe("Providers CRUD", () => {
   test("delete non-existent provider throws NOT_FOUND", async () => {
     const caller = createCaller();
     await expect(caller.providers.delete({ id: "non-existent-id" })).rejects.toThrow("NOT_FOUND");
+  });
+
+  test("encrypted API key in DB decrypts to original", async () => {
+    const caller = createCaller();
+    const plainKey = "sk-roundtrip-test-key-999";
+
+    const created = await caller.providers.create({
+      name: "Roundtrip Test",
+      adapterType: "openai",
+      baseUrl: "https://api.example.com/v1",
+      apiKey: plainKey,
+    });
+
+    // Read raw row from DB
+    const row = db.select().from(providers).where(eq(providers.id, created.id)).get()!;
+    // Decrypt and verify
+    const decrypted = await decrypt(row.apiKey);
+    expect(decrypted).toBe(plainKey);
+    // Stored value should NOT be plaintext
+    expect(row.apiKey).not.toBe(plainKey);
   });
 
   test("create with config stores JSON", async () => {

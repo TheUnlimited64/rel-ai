@@ -1,0 +1,13 @@
+services:
+  rel-ai:
+    build: .
+    ports:
+      - "3000:3000"
+    volumes:
+      - rel-ai-data:/app/data
+    environment:
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
+    restart: unless-stopped
+
+volumes:
+  rel-ai-data:

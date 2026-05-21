@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { serveStatic } from "hono/bun";
 import { trpcServer } from "@hono/trpc-server";
 import { appRouter } from "./api/router.js";
 import { createContextFactory } from "./api/context.js";
@@ -10,6 +11,7 @@ import { ProxyHandler } from "./core/proxy/handler.js";
 import type { ProviderCredentials } from "./core/proxy/handler.js";
 import { ModelResolver } from "./core/model/resolver.js";
 import { AdapterRegistry } from "./core/provider/registry.js";
+import { migratePlaintextApiKeys } from "./core/provider/migrate.js";
 import { OpenAIAdapter } from "./adapters/openai/adapter.js";
 import { AnthropicAdapter } from "./adapters/anthropic/adapter.js";
 import { decrypt } from "./core/auth/encryption.js";
@@ -20,6 +22,7 @@ import { RequestLogger } from "./core/logging/logger.js";
 
 const db = createDb();
 migrate(db, { migrationsFolder: "./src/db/migrations" });
+await migratePlaintextApiKeys(db);
 
 const createContext = createContextFactory(db);
 
@@ -111,9 +114,19 @@ app.get("/health", (c) => c.json({ status: "ok", version: VERSION }));
 const proxyRouter = createProxyRouter(db, proxyHandler);
 app.route("/v1", proxyRouter);
 
+// Serve static frontend files (from public/ directory)
+app.use("/*", serveStatic({ root: "./public" }));
+
+// SPA fallback — serve index.html for any unmatched route
+app.get("*", serveStatic({ root: "./public", path: "index.html" }));
+
 export function getBackendVersion(): string {
   return VERSION;
 }
 
 export { app, appRouter, db };
 export type { AppRouter } from "./api/router.js";
+
+const port = Number(process.env.PORT || 3000);
+Bun.serve({ fetch: app.fetch, port });
+console.log(`RelAI running on http://localhost:${port}`);
