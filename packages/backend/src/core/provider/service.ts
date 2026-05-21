@@ -1,0 +1,175 @@
+import { eq } from "drizzle-orm";
+import { encrypt, decrypt } from "../auth/encryption.js";
+import { providers } from "../../db/schema/providers.js";
+import { models } from "../../db/schema/models.js";
+import type { DbClient } from "../../db/connection.js";
+
+export type ProviderRow = typeof providers.$inferSelect;
+
+export interface ProviderResponse {
+  id: string;
+  name: string;
+  adapterType: string;
+  baseUrl: string;
+  apiKey: string; // masked
+  enabled: boolean;
+  config: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function toResponse(row: ProviderRow, maskedKey: string): ProviderResponse {
+  return {
+    id: row.id,
+    name: row.name,
+    adapterType: row.adapterType,
+    baseUrl: row.baseUrl,
+    apiKey: maskedKey,
+    enabled: row.enabled,
+    config: row.config,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+export async function maskApiKey(encryptedKey: string): Promise<string> {
+  try {
+    const decrypted = await decrypt(encryptedKey);
+    if (decrypted.length <= 3) return "****";
+    return `${decrypted.slice(0, 3)}****`;
+  } catch {
+    return "****";
+  }
+}
+
+export async function createProvider(
+  db: DbClient,
+  input: {
+    name: string;
+    adapterType: string;
+    baseUrl: string;
+    apiKey: string;
+    config?: Record<string, unknown>;
+  },
+): Promise<ProviderResponse> {
+  const id = crypto.randomUUID();
+  const encryptedKey = await encrypt(input.apiKey);
+  const configJson = input.config ? JSON.stringify(input.config) : null;
+  const now = new Date().toISOString().replace("T", " ").split(".")[0]!;
+
+  db.insert(providers)
+    .values({
+      id,
+      name: input.name,
+      adapterType: input.adapterType,
+      baseUrl: input.baseUrl,
+      apiKey: encryptedKey,
+      config: configJson,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .run();
+
+  const row = db.select().from(providers).where(eq(providers.id, id)).get()!;
+  const masked = await maskApiKey(encryptedKey);
+  return toResponse(row, masked);
+}
+
+export async function listProviders(db: DbClient): Promise<ProviderResponse[]> {
+  const rows = db.select().from(providers).all();
+  const results: ProviderResponse[] = [];
+  for (const row of rows) {
+    const masked = await maskApiKey(row.apiKey);
+    results.push(toResponse(row, masked));
+  }
+  return results;
+}
+
+export async function getProvider(db: DbClient, id: string): Promise<ProviderResponse> {
+  const row = db.select().from(providers).where(eq(providers.id, id)).get();
+  if (!row) throw new Error("NOT_FOUND");
+  const masked = await maskApiKey(row.apiKey);
+  return toResponse(row, masked);
+}
+
+export async function updateProvider(
+  db: DbClient,
+  input: {
+    id: string;
+    name?: string;
+    adapterType?: string;
+    baseUrl?: string;
+    apiKey?: string;
+    enabled?: boolean;
+    config?: Record<string, unknown>;
+  },
+): Promise<ProviderResponse> {
+  const existing = db.select().from(providers).where(eq(providers.id, input.id)).get();
+  if (!existing) throw new Error("NOT_FOUND");
+
+  const updates: Partial<typeof providers.$inferInsert> = {};
+  if (input.name !== undefined) updates.name = input.name;
+  if (input.adapterType !== undefined) updates.adapterType = input.adapterType;
+  if (input.baseUrl !== undefined) updates.baseUrl = input.baseUrl;
+  if (input.enabled !== undefined) updates.enabled = input.enabled;
+  if (input.apiKey !== undefined) updates.apiKey = await encrypt(input.apiKey);
+  if (input.config !== undefined) updates.config = JSON.stringify(input.config);
+
+  const now = new Date().toISOString().replace("T", " ").split(".")[0]!;
+  updates.updatedAt = now;
+
+  db.update(providers).set(updates).where(eq(providers.id, input.id)).run();
+
+  const row = db.select().from(providers).where(eq(providers.id, input.id)).get()!;
+  const masked = await maskApiKey(row.apiKey);
+  return toResponse(row, masked);
+}
+
+export async function deleteProvider(db: DbClient, id: string): Promise<{ success: boolean }> {
+  const existing = db.select().from(providers).where(eq(providers.id, id)).get();
+  if (!existing) throw new Error("NOT_FOUND");
+
+  // Cascade delete related models
+  db.delete(models).where(eq(models.providerId, id)).run();
+  db.delete(providers).where(eq(providers.id, id)).run();
+
+  return { success: true };
+}
+
+export async function testProviderConnection(
+  db: DbClient,
+  id: string,
+): Promise<{ success: boolean; error?: string; latencyMs: number }> {
+  const row = db.select().from(providers).where(eq(providers.id, id)).get();
+  if (!row) throw new Error("NOT_FOUND");
+
+  const apiKey = await decrypt(row.apiKey);
+  const baseUrl = row.baseUrl.replace(/\/$/, "");
+  const url = `${baseUrl}/v1/models`;
+
+  const start = Date.now();
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+      signal: AbortSignal.timeout(10_000),
+    });
+    const latencyMs = Date.now() - start;
+
+    if (!response.ok) {
+      return {
+        success: false,
+        error: `HTTP ${response.status}: ${response.statusText}`,
+        latencyMs,
+      };
+    }
+
+    return { success: true, latencyMs };
+  } catch (err) {
+    const latencyMs = Date.now() - start;
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return { success: false, error: message, latencyMs };
+  }
+}
