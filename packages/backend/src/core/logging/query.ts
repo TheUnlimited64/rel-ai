@@ -59,7 +59,7 @@ export class RequestLogQuery {
     return { items, total };
   }
 
-  stats(filters: { from?: string; to?: string } = {}): StatsResult {
+  stats(filters: ListFilters = {}): StatsResult {
     const conditions = buildConditions(filters);
     const where = conditions.length > 0 ? and(...conditions) : undefined;
 

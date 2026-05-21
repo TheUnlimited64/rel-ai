@@ -1,30 +1,11 @@
-export type LogEntry = {
-  id: string;
-  endpointId: string | null;
-  requestedModel: string;
-  resolvedModel: string | null;
-  providerId: string | null;
-  promptTokens: number | null;
-  completionTokens: number | null;
-  latencyMs: number | null;
-  status: string;
-  errorDetail: string | null;
-  createdAt: string;
-};
+import type { inferRouterOutputs } from "@trpc/server";
+import type { AppRouter } from "@rel-ai/backend";
 
-export type PaginatedLogs = {
-  items: LogEntry[];
-  total: number;
-};
+type RouterOutputs = inferRouterOutputs<AppRouter>;
 
-export type StatsData = {
-  totalRequests: number;
-  successRate: number;
-  avgLatencyMs: number | null;
-  totalTokens: number;
-  byProvider: Array<{ id: string; count: number; successRate: number; avgLatencyMs: number | null }>;
-  byModel: Array<{ id: string; count: number; successRate: number; avgLatencyMs: number | null }>;
-};
+export type LogEntry = RouterOutputs["logs"]["list"]["items"][number];
+export type PaginatedLogs = RouterOutputs["logs"]["list"];
+export type StatsData = RouterOutputs["logs"]["stats"];
 
 export type LogFilters = {
   endpointId?: string;

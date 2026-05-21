@@ -16,6 +16,9 @@ const listInput = z.object({
 });
 
 const statsInput = z.object({
+  endpointId: z.string().optional(),
+  providerId: z.string().optional(),
+  status: z.enum(["success", "error", "rate_limited"]).optional(),
   from: z.string().optional(),
   to: z.string().optional(),
 });
