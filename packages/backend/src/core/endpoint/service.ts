@@ -55,23 +55,25 @@ export async function createEndpoint(
   const id = crypto.randomUUID();
 
   try {
-    db.insert(endpoints)
-      .values({
-        id,
-        name: input.name,
-        path: input.path,
-        tokenHash: hash,
-      })
-      .run();
-  } catch (err: any) {
-    if (err.message?.includes("UNIQUE constraint")) {
+    db.transaction((tx) => {
+      tx.insert(endpoints)
+        .values({
+          id,
+          name: input.name,
+          path: input.path,
+          tokenHash: hash,
+        })
+        .run();
+
+      for (const modelId of input.modelIds) {
+        tx.insert(endpointModels).values({ endpointId: id, modelId }).run();
+      }
+    });
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message?.includes("UNIQUE constraint")) {
       throw new Error("DUPLICATE_PATH");
     }
     throw err;
-  }
-
-  for (const modelId of input.modelIds) {
-    db.insert(endpointModels).values({ endpointId: id, modelId }).run();
   }
 
   const row = db.select().from(endpoints).where(eq(endpoints.id, id)).get()!;
@@ -169,20 +171,22 @@ export async function updateEndpoint(
   updates.updatedAt = now;
 
   try {
-    db.update(endpoints).set(updates).where(eq(endpoints.id, input.id)).run();
-  } catch (err: any) {
-    if (err.message?.includes("UNIQUE constraint")) {
+    db.transaction((tx) => {
+      tx.update(endpoints).set(updates).where(eq(endpoints.id, input.id)).run();
+
+      // Update model associations if provided
+      if (input.modelIds !== undefined) {
+        tx.delete(endpointModels).where(eq(endpointModels.endpointId, input.id)).run();
+        for (const modelId of input.modelIds) {
+          tx.insert(endpointModels).values({ endpointId: input.id, modelId }).run();
+        }
+      }
+    });
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message?.includes("UNIQUE constraint")) {
       throw new Error("DUPLICATE_PATH");
     }
     throw err;
-  }
-
-  // Update model associations if provided
-  if (input.modelIds !== undefined) {
-    db.delete(endpointModels).where(eq(endpointModels.endpointId, input.id)).run();
-    for (const modelId of input.modelIds) {
-      db.insert(endpointModels).values({ endpointId: input.id, modelId }).run();
-    }
   }
 
   return getEndpoint(db, input.id);

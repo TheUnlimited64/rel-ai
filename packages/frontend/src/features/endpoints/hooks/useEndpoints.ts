@@ -1,5 +1,5 @@
 import { trpcReact as trpcHooks } from "@/lib/trpc";
-import type { EndpointListResponse } from "./api";
+import type { EndpointListResponse } from "../api";
 
 export function useEndpoints() {
   const query = trpcHooks.endpoints.list.useQuery();
@@ -24,13 +24,14 @@ export function useEndpoints() {
       utils.endpoints.list.setData(undefined, (prev) =>
         prev ? prev.filter((x) => x.id !== id) : prev,
       );
+      await utils.endpoints.get.invalidate();
     },
   });
 
   const remove = (id: string) => deleteMutation.mutateAsync({ id });
 
   return {
-    endpoints: (query.data ?? []) as EndpointListResponse[],
+    endpoints: query.data ?? [],
     loading: query.isLoading,
     error: query.error?.message ?? null,
     reload: () => utils.endpoints.list.invalidate(),

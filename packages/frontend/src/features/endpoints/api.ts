@@ -34,3 +34,7 @@ export type ModelListResponse = {
   type: string;
   variant?: string;
 };
+
+export function getProxyBase(): string {
+  return import.meta.env.VITE_PROXY_BASE ?? window.location.origin + "/v1";
+}

@@ -1,10 +1,9 @@
 import type { EndpointListResponse } from "../api";
+import { getProxyBase } from "../api";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-
-const PROXY_BASE = "http://localhost:3000/v1";
 
 interface EndpointTableProps {
   endpoints: EndpointListResponse[];
@@ -14,7 +13,7 @@ interface EndpointTableProps {
 }
 
 function copyUrl(path: string) {
-  navigator.clipboard.writeText(`${PROXY_BASE}/${path}/chat/completions`);
+  navigator.clipboard.writeText(`${getProxyBase()}/${path}/chat/completions`);
 }
 
 export function EndpointTable({ endpoints, onToggle, onDelete, onClickRow }: EndpointTableProps) {

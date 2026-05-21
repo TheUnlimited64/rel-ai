@@ -1,122 +1,64 @@
 import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { trpcReact as trpcHooks } from "@/lib/trpc";
-import type { EndpointCreateResponse } from "../api";
+import { EndpointModelManager } from "./EndpointModelManager";
 
-const PATH_REGEX = /^[a-z0-9-]+$/;
+const formSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  path: z.string().min(1, "Path is required").regex(/^[a-z0-9-]+$/, "Only lowercase letters, numbers, and hyphens"),
+});
+type FormValues = z.infer<typeof formSchema>;
 
 interface EndpointFormProps {
-  onSuccess: (created: EndpointCreateResponse) => void;
+  onSuccess: (created: { id: string; name: string; path: string; token: string; enabled: boolean; createdAt: string; updatedAt: string }) => void;
   onCancel: () => void;
 }
 
 export function EndpointForm({ onSuccess, onCancel }: EndpointFormProps) {
-  const [name, setName] = useState("");
-  const [path, setPath] = useState("");
   const [selectedModelIds, setSelectedModelIds] = useState<Set<string>>(new Set());
-  const [pathError, setPathError] = useState<string | null>(null);
-
   const utils = trpcHooks.useUtils();
   const { data: models } = trpcHooks.models.list.useQuery();
   const createMutation = trpcHooks.endpoints.create.useMutation({
-    onSuccess: async (result) => {
-      await utils.endpoints.list.invalidate();
-      onSuccess(result as EndpointCreateResponse);
-    },
+    onSuccess: async (result) => { await utils.endpoints.list.invalidate(); onSuccess(result); },
+  });
+  const { register, handleSubmit, formState: { errors } } = useForm<FormValues>({
+    resolver: zodResolver(formSchema),
+    defaultValues: { name: "", path: "" },
   });
 
-  function handlePathChange(value: string) {
-    setPath(value);
-    if (value && !PATH_REGEX.test(value)) {
-      setPathError("Only lowercase letters, numbers, and hyphens");
-    } else {
-      setPathError(null);
-    }
-  }
-
   function toggleModel(id: string) {
-    setSelectedModelIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+    setSelectedModelIds((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   }
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-
-    if (!PATH_REGEX.test(path)) {
-      setPathError("Only lowercase letters, numbers, and hyphens");
-      return;
-    }
-
-    createMutation.mutate({
-      name,
-      path,
-      modelIds: Array.from(selectedModelIds),
-    });
+  function onSubmit(data: FormValues) {
+    createMutation.mutate({ ...data, modelIds: Array.from(selectedModelIds) });
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
       <div className="space-y-2">
         <Label htmlFor="ep-name">Name</Label>
-        <Input id="ep-name" value={name} onChange={(e) => setName(e.target.value)} required />
+        <Input id="ep-name" {...register("name")} />
+        {errors.name && <p className="text-xs text-destructive">{errors.name.message}</p>}
       </div>
       <div className="space-y-2">
         <Label htmlFor="ep-path">Path</Label>
-        <Input
-          id="ep-path"
-          value={path}
-          onChange={(e) => handlePathChange(e.target.value)}
-          placeholder="my-endpoint"
-          required
-        />
-        {pathError && <p className="text-xs text-destructive">{pathError}</p>}
-        {!pathError && (
-          <p className="text-xs text-muted-foreground">
-            Lowercase letters, numbers, and hyphens only
-          </p>
-        )}
+        <Input id="ep-path" {...register("path")} placeholder="my-endpoint" />
+        {errors.path && <p className="text-xs text-destructive">{errors.path.message}</p>}
+        {!errors.path && <p className="text-xs text-muted-foreground">Lowercase letters, numbers, and hyphens only</p>}
       </div>
-      <div className="space-y-2">
-        <Label>Models</Label>
-        {!models || models.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No models available</p>
-        ) : (
-          <div className="max-h-48 space-y-1 overflow-y-auto rounded border p-2">
-            {models.map((m) => (
-              <label key={m.id} className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={selectedModelIds.has(m.id)}
-                  onChange={() => toggleModel(m.id)}
-                  className="accent-primary"
-                />
-                <span>{m.displayName}</span>
-                <span className="text-xs text-muted-foreground">({m.type})</span>
-              </label>
-            ))}
-          </div>
-        )}
-      </div>
+      <EndpointModelManager models={(models ?? []).map((m) => ({ id: m.id, displayName: m.displayName, type: m.type }))} selectedModelIds={selectedModelIds} onToggle={toggleModel} />
       {createMutation.error && (
-        <p className="text-sm text-destructive">
-          {createMutation.error.message.includes("DUPLICATE_PATH")
-            ? "This path is already in use"
-            : createMutation.error.message}
-        </p>
+        <p className="text-sm text-destructive">{createMutation.error.message.includes("DUPLICATE_PATH") ? "This path is already in use" : createMutation.error.message}</p>
       )}
       <div className="flex justify-end gap-2">
-        <Button type="button" variant="outline" onClick={onCancel}>
-          Cancel
-        </Button>
-        <Button type="submit" disabled={createMutation.isPending || !!pathError}>
-          {createMutation.isPending ? "Creating..." : "Create"}
-        </Button>
+        <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
+        <Button type="submit" disabled={createMutation.isPending}>{createMutation.isPending ? "Creating..." : "Create"}</Button>
       </div>
     </form>
   );

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure } from "../trpc.js";
 import {
   createEndpoint,
@@ -9,6 +10,17 @@ import {
   regenerateEndpointToken,
   getEndpointModels,
 } from "../../core/endpoint/service.js";
+
+async function mapNotFound<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (e) {
+    if (e instanceof Error && e.message === "NOT_FOUND") {
+      throw new TRPCError({ code: "NOT_FOUND", message: "Endpoint not found" });
+    }
+    throw e;
+  }
+}
 
 const PathSchema = z.string().regex(/^[a-z0-9-]+$/, "Path must be lowercase alphanumeric with hyphens");
 
@@ -44,30 +56,30 @@ export const endpointsRouter = createTRPCRouter({
   get: protectedProcedure
     .input(IdInputSchema)
     .query(async ({ ctx, input }) => {
-      return getEndpoint(ctx.db, input.id);
+      return mapNotFound(() => getEndpoint(ctx.db, input.id));
     }),
 
   update: protectedProcedure
     .input(UpdateEndpointInputSchema)
     .mutation(async ({ ctx, input }) => {
-      return updateEndpoint(ctx.db, input);
+      return mapNotFound(() => updateEndpoint(ctx.db, input));
     }),
 
   delete: protectedProcedure
     .input(IdInputSchema)
     .mutation(async ({ ctx, input }) => {
-      return deleteEndpoint(ctx.db, input.id);
+      return mapNotFound(() => deleteEndpoint(ctx.db, input.id));
     }),
 
   regenerateToken: protectedProcedure
     .input(IdInputSchema)
     .mutation(async ({ ctx, input }) => {
-      return regenerateEndpointToken(ctx.db, input.id);
+      return mapNotFound(() => regenerateEndpointToken(ctx.db, input.id));
     }),
 
   getModels: protectedProcedure
     .input(IdInputSchema)
     .query(async ({ ctx, input }) => {
-      return getEndpointModels(ctx.db, input.id);
+      return mapNotFound(() => getEndpointModels(ctx.db, input.id));
     }),
 });
