@@ -1,10 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { createVirtualFallback, createVirtualTuned, fetchModels, type ModelResponse } from "../api";
+import { trpcReact as trpcHooks } from "@/lib/trpc";
 
 type VirtualMode = "fallback" | "tuned";
 
@@ -17,7 +17,6 @@ export function CreateVirtualModelForm({ onSuccess, onCancel }: CreateVirtualMod
   const [mode, setMode] = useState<VirtualMode>("fallback");
   const [id, setId] = useState("");
   const [displayName, setDisplayName] = useState("");
-  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Fallback state
@@ -28,11 +27,29 @@ export function CreateVirtualModelForm({ onSuccess, onCancel }: CreateVirtualMod
   const [baseModelId, setBaseModelId] = useState("");
   const [overridesText, setOverridesText] = useState("");
   const [overridesError, setOverridesError] = useState<string | null>(null);
-  const [selectableModels, setSelectableModels] = useState<ModelResponse[]>([]);
 
-  useEffect(() => {
-    fetchModels().then(setSelectableModels).catch(() => {});
-  }, []);
+  const utils = trpcHooks.useUtils();
+  const { data: selectableModels } = trpcHooks.models.list.useQuery();
+
+  const fallbackMutation = trpcHooks.models.createVirtualFallback.useMutation({
+    onSuccess: async () => {
+      await utils.models.list.invalidate();
+      onSuccess();
+    },
+    onError: (err) => {
+      setError(err.message);
+    },
+  });
+
+  const tunedMutation = trpcHooks.models.createVirtualTuned.useMutation({
+    onSuccess: async () => {
+      await utils.models.list.invalidate();
+      onSuccess();
+    },
+    onError: (err) => {
+      setError(err.message);
+    },
+  });
 
   function addChainItem() {
     const trimmed = chainInput.trim();
@@ -72,7 +89,7 @@ export function CreateVirtualModelForm({ onSuccess, onCancel }: CreateVirtualMod
     }
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
 
@@ -81,19 +98,11 @@ export function CreateVirtualModelForm({ onSuccess, onCancel }: CreateVirtualMod
         setError("Fallback chain must have at least one model");
         return;
       }
-      setSubmitting(true);
-      try {
-        await createVirtualFallback({
-          id,
-          fallbackChain: chainItems,
-          displayName: displayName || undefined,
-        });
-        onSuccess();
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to create model");
-      } finally {
-        setSubmitting(false);
-      }
+      fallbackMutation.mutate({
+        id,
+        fallbackChain: chainItems,
+        displayName: displayName || undefined,
+      });
     } else {
       if (!baseModelId) {
         setError("Please select a base model");
@@ -101,22 +110,16 @@ export function CreateVirtualModelForm({ onSuccess, onCancel }: CreateVirtualMod
       }
       const overrides = validateOverrides();
       if (overrides === null) return;
-      setSubmitting(true);
-      try {
-        await createVirtualTuned({
-          id,
-          baseModelId,
-          overrides: Object.keys(overrides).length > 0 ? overrides : undefined,
-          displayName: displayName || undefined,
-        });
-        onSuccess();
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to create model");
-      } finally {
-        setSubmitting(false);
-      }
+      tunedMutation.mutate({
+        id,
+        baseModelId,
+        overrides: Object.keys(overrides).length > 0 ? overrides : undefined,
+        displayName: displayName || undefined,
+      });
     }
   }
+
+  const isPending = fallbackMutation.isPending || tunedMutation.isPending;
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
@@ -174,7 +177,7 @@ export function CreateVirtualModelForm({ onSuccess, onCancel }: CreateVirtualMod
             <Select value={baseModelId} onValueChange={(v) => { if (v) setBaseModelId(v); }}>
               <SelectTrigger><SelectValue placeholder="Select base model" /></SelectTrigger>
               <SelectContent>
-                {selectableModels
+                {(selectableModels ?? [])
                   .filter((m) => m.type === "real" || (m.type === "virtual" && m.variant === "tuned"))
                   .map((m) => (
                     <SelectItem key={m.id} value={m.id}>{m.displayName || m.id}</SelectItem>
@@ -200,7 +203,7 @@ export function CreateVirtualModelForm({ onSuccess, onCancel }: CreateVirtualMod
       {error && <p className="text-sm text-destructive">{error}</p>}
       <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
-        <Button type="submit" disabled={submitting}>{submitting ? "Creating..." : "Create"}</Button>
+        <Button type="submit" disabled={isPending}>{isPending ? "Creating..." : "Create"}</Button>
       </div>
     </form>
   );

@@ -1,38 +1,36 @@
-import { useState, useEffect, useCallback } from "react";
+import { trpcReact as trpcHooks } from "@/lib/trpc";
 import type { ProviderResponse } from "./api";
-import { fetchProviders, updateProvider, deleteProvider } from "./api";
 
 export function useProviders() {
-  const [providers, setProviders] = useState<ProviderResponse[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const query = trpcHooks.providers.list.useQuery();
+  const utils = trpcHooks.useUtils();
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await fetchProviders();
-      setProviders(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load providers");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const toggleMutation = trpcHooks.providers.update.useMutation({
+    onSuccess: async (updated) => {
+      utils.providers.list.setData(undefined, (prev) =>
+        prev ? prev.map((x) => (x.id === updated.id ? (updated as ProviderResponse) : x)) : prev,
+      );
+    },
+  });
 
-  useEffect(() => { load(); }, [load]);
+  const deleteMutation = trpcHooks.providers.delete.useMutation({
+    onSuccess: async (_result, { id }) => {
+      utils.providers.list.setData(undefined, (prev) =>
+        prev ? prev.filter((x) => x.id !== id) : prev,
+      );
+    },
+  });
 
-  const toggleEnabled = useCallback(async (p: ProviderResponse) => {
-    try {
-      const updated = await updateProvider({ id: p.id, enabled: !p.enabled });
-      setProviders((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
-    } catch { /* optimistic — will reload */ }
-  }, []);
+  const remove = (id: string) => deleteMutation.mutateAsync({ id });
 
-  const remove = useCallback(async (id: string) => {
-    await deleteProvider(id);
-    setProviders((prev) => prev.filter((x) => x.id !== id));
-  }, []);
-
-  return { providers, loading, error, reload: load, toggleEnabled, remove };
+  return {
+    providers: (query.data ?? []) as ProviderResponse[],
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+    reload: () => utils.providers.list.invalidate(),
+    toggleEnabled: (p: ProviderResponse) => toggleMutation.mutate({ id: p.id, enabled: !p.enabled }),
+    remove,
+    toggleMutation,
+    deleteMutation,
+  };
 }

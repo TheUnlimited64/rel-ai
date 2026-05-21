@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { createProvider } from "../api";
+import { trpcReact as trpcHooks } from "@/lib/trpc";
 import type { AdapterType } from "../api";
 
 interface ProviderFormProps {
@@ -18,33 +18,29 @@ export function ProviderForm({ onSuccess, onCancel }: ProviderFormProps) {
   const [baseUrl, setBaseUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [config, setConfig] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [jsonError, setJsonError] = useState<string | null>(null);
+  const utils = trpcHooks.useUtils();
+  const createMutation = trpcHooks.providers.create.useMutation({
+    onSuccess: async () => {
+      await utils.providers.list.invalidate();
+      onSuccess();
+    },
+  });
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setError(null);
-    setSubmitting(true);
 
     let configObj: Record<string, unknown> | undefined;
     if (config.trim()) {
       try {
         configObj = JSON.parse(config);
       } catch {
-        setError("Config must be valid JSON");
-        setSubmitting(false);
+        setJsonError("Invalid JSON configuration");
         return;
       }
     }
 
-    try {
-      await createProvider({ name, adapterType, baseUrl, apiKey, config: configObj });
-      onSuccess();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create provider");
-    } finally {
-      setSubmitting(false);
-    }
+    createMutation.mutate({ name, adapterType, baseUrl, apiKey, config: configObj });
   }
 
   return (
@@ -74,12 +70,13 @@ export function ProviderForm({ onSuccess, onCancel }: ProviderFormProps) {
       </div>
       <div className="space-y-2">
         <Label htmlFor="config">Config (JSON, optional)</Label>
-        <Textarea id="config" value={config} onChange={(e) => setConfig(e.target.value)} placeholder='{"key": "value"}' rows={3} />
+        <Textarea id="config" value={config} onChange={(e) => { setConfig(e.target.value); setJsonError(null); }} placeholder='{"key": "value"}' rows={3} />
+        {jsonError && <p className="text-xs text-destructive">{jsonError}</p>}
       </div>
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {createMutation.error && <p className="text-sm text-destructive">{createMutation.error.message}</p>}
       <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
-        <Button type="submit" disabled={submitting}>{submitting ? "Creating..." : "Create"}</Button>
+        <Button type="submit" disabled={createMutation.isPending}>{createMutation.isPending ? "Creating..." : "Create"}</Button>
       </div>
     </form>
   );

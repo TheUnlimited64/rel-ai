@@ -18,43 +18,41 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { fetchTokens, createToken, deleteToken, type TokenResponse, type CreateTokenResponse } from "./api";
+import { trpcReact as trpcHooks } from "@/lib/trpc";
+import type { TokenResponse, CreateTokenResponse } from "./api";
 
 export function TokensPage() {
-  const [tokens, setTokens] = useState<TokenResponse[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [newToken, setNewToken] = useState<CreateTokenResponse | null>(null);
 
-  async function load() {
-    try {
-      setLoading(true);
-      setError(null);
-      setTokens(await fetchTokens());
-    } catch {
-      setError("Failed to load tokens");
-    } finally {
-      setLoading(false);
-    }
+  const tokensQuery = trpcHooks.auth.listTokens.useQuery();
+  const utils = trpcHooks.useUtils();
+  const tokens = (tokensQuery.data ?? []) as TokenResponse[];
+  const loading = tokensQuery.isLoading;
+  const error = tokensQuery.error?.message ?? null;
+
+  const createMutation = trpcHooks.auth.createToken.useMutation({
+    onSuccess: async (result) => {
+      setNewToken(result as CreateTokenResponse);
+      await utils.auth.listTokens.invalidate();
+    },
+  });
+
+  const deleteMutation = trpcHooks.auth.deleteToken.useMutation({
+    onSuccess: async () => {
+      setDeleteId(null);
+      await utils.auth.listTokens.invalidate();
+    },
+  });
+
+  function handleCreate(name: string) {
+    createMutation.mutate({ name });
   }
 
-  useState(() => { load(); });
-
-  async function handleCreate(name: string) {
-    const result = await createToken(name);
-    setNewToken(result);
-    await load();
-  }
-
-  async function handleDelete() {
+  function handleDelete() {
     if (!deleteId) return;
-    try {
-      await deleteToken(deleteId);
-    } catch { /* ignore */ }
-    setDeleteId(null);
-    await load();
+    deleteMutation.mutate({ id: deleteId });
   }
 
   function copyToken(token: string) {
@@ -125,6 +123,7 @@ export function TokensPage() {
         open={showCreate}
         onOpenChange={setShowCreate}
         onSubmit={handleCreate}
+        isPending={createMutation.isPending}
       />
 
       <TokenRevealDialog
@@ -141,7 +140,7 @@ export function TokensPage() {
           </p>
           <div className="flex justify-end gap-2 pt-4">
             <Button variant="outline" onClick={() => setDeleteId(null)}>Cancel</Button>
-            <Button variant="destructive" onClick={handleDelete}>Delete</Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={deleteMutation.isPending}>Delete</Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -153,29 +152,23 @@ function CreateTokenDialog({
   open,
   onOpenChange,
   onSubmit,
+  isPending,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  onSubmit: (name: string) => Promise<void>;
+  onSubmit: (name: string) => void;
+  isPending: boolean;
 }) {
   const [name, setName] = useState("");
-  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
-    try {
-      setSubmitting(true);
-      setError(null);
-      await onSubmit(name.trim());
-      setName("");
-      onOpenChange(false);
-    } catch {
-      setError("Failed to create token");
-    } finally {
-      setSubmitting(false);
-    }
+    setError(null);
+    onSubmit(name.trim());
+    setName("");
+    onOpenChange(false);
   }
 
   return (
@@ -195,7 +188,7 @@ function CreateTokenDialog({
           {error && <p className="text-sm text-destructive">{error}</p>}
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-            <Button type="submit" disabled={!name.trim() || submitting}>Create</Button>
+            <Button type="submit" disabled={!name.trim() || isPending}>Create</Button>
           </div>
         </form>
       </DialogContent>

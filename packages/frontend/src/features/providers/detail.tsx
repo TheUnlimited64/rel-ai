@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,14 +9,13 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { trpcReact as trpcHooks } from "@/lib/trpc";
 import type { ProviderResponse, AdapterType } from "./api";
-import { fetchProvider, updateProvider, testConnection } from "./api";
 
 export function ProviderDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [provider, setProvider] = useState<ProviderResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  const initIdRef = useRef<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; error?: string; latencyMs: number } | null>(null);
@@ -27,71 +26,77 @@ export function ProviderDetailPage() {
   const [baseUrl, setBaseUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [config, setConfig] = useState("");
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    if (!id) return;
-    setLoading(true);
-    try {
-      const data = await fetchProvider(id);
-      setProvider(data);
-      setName(data.name);
-      setAdapterType(data.adapterType as AdapterType);
-      setBaseUrl(data.baseUrl);
-      setApiKey("");
-      setConfig(data.config ?? "");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load provider");
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
+  const query = trpcHooks.providers.get.useQuery({ id: id! }, { enabled: !!id });
+  const utils = trpcHooks.useUtils();
+  const provider = query.data as ProviderResponse | undefined;
+  const loading = query.isLoading;
 
-  useEffect(() => { load(); }, [load]);
+  // Sync form state when data loads
+  useEffect(() => {
+    if (provider && initIdRef.current !== id) {
+      setName(provider.name);
+      setAdapterType(provider.adapterType as AdapterType);
+      setBaseUrl(provider.baseUrl);
+      setConfig(provider.config ?? "");
+      initIdRef.current = id ?? null;
+    }
+  }, [provider, id]);
+
+  const updateMutation = trpcHooks.providers.update.useMutation({
+    onSuccess: async () => {
+      await utils.providers.get.invalidate({ id });
+      await utils.providers.list.invalidate();
+    },
+  });
+
+  const testMutation = trpcHooks.providers.testConnection.useMutation({
+    onSuccess: (result) => {
+      setTestResult(result);
+    },
+    onError: () => {
+      setTestResult({ success: false, error: "Request failed", latencyMs: 0 });
+    },
+  });
 
   async function handleSave() {
     if (!id) return;
-    setSaving(true);
     setError(null);
 
     let configObj: Record<string, unknown> | undefined;
     if (config.trim()) {
       try { configObj = JSON.parse(config); } catch {
         setError("Config must be valid JSON");
-        setSaving(false);
         return;
       }
     }
 
-    try {
-      const input: Record<string, unknown> = { id, name, adapterType, baseUrl, config: configObj };
-      if (apiKey.trim()) input.apiKey = apiKey;
-      const updated = await updateProvider(input as Parameters<typeof updateProvider>[0]);
-      setProvider(updated);
-      setEditing(false);
-      setApiKey("");
-      setConfig(updated.config ?? "");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update");
-    } finally {
-      setSaving(false);
-    }
+    const input: Record<string, unknown> = { id, name, adapterType, baseUrl, config: configObj };
+    if (apiKey.trim()) input.apiKey = apiKey;
+    updateMutation.mutate(input as Parameters<typeof updateMutation.mutate>[0], {
+      onSuccess: () => {
+        setEditing(false);
+        setApiKey("");
+      },
+      onError: (err) => {
+        setError(err instanceof Error ? err.message : "Failed to update");
+      },
+    });
   }
 
-  async function handleTest() {
+  function handleTest() {
     if (!id) return;
-    setTesting(true);
     setTestResult(null);
-    try {
-      const result = await testConnection(id);
-      setTestResult(result);
-    } catch {
-      setTestResult({ success: false, error: "Request failed", latencyMs: 0 });
-    } finally {
-      setTesting(false);
-    }
+    testMutation.mutate({ id });
   }
+
+  function handleToggle(checked: boolean) {
+    if (!provider) return;
+    updateMutation.mutate({ id: provider.id, enabled: checked });
+  }
+
+  const saving = updateMutation.isPending;
 
   if (loading) {
     return <div className="space-y-4">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-10 animate-pulse rounded bg-muted" />)}</div>;
@@ -116,10 +121,8 @@ export function ProviderDetailPage() {
             <span className="text-sm text-muted-foreground">Enabled</span>
             <Switch
               checked={provider.enabled}
-              onCheckedChange={async (checked) => {
-                const updated = await updateProvider({ id: provider.id, enabled: checked });
-                setProvider(updated);
-              }}
+              onCheckedChange={handleToggle}
+              disabled={updateMutation.isPending}
             />
           </div>
         </CardHeader>
@@ -185,8 +188,8 @@ export function ProviderDetailPage() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Connection Test</CardTitle>
-          <Button variant="outline" onClick={handleTest} disabled={testing}>
-            {testing ? "Testing..." : "Test Connection"}
+          <Button variant="outline" onClick={handleTest} disabled={testMutation.isPending}>
+            {testMutation.isPending ? "Testing..." : "Test Connection"}
           </Button>
         </CardHeader>
         {testResult && (

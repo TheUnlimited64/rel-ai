@@ -1,9 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { createEndpoint, fetchModels } from "../api";
-import type { ModelListResponse, EndpointCreateResponse } from "../api";
+import { trpcReact as trpcHooks } from "@/lib/trpc";
+import type { EndpointCreateResponse } from "../api";
 
 const PATH_REGEX = /^[a-z0-9-]+$/;
 
@@ -16,16 +16,16 @@ export function EndpointForm({ onSuccess, onCancel }: EndpointFormProps) {
   const [name, setName] = useState("");
   const [path, setPath] = useState("");
   const [selectedModelIds, setSelectedModelIds] = useState<Set<string>>(new Set());
-  const [models, setModels] = useState<ModelListResponse[]>([]);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [pathError, setPathError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchModels()
-      .then(setModels)
-      .catch(() => {});
-  }, []);
+  const utils = trpcHooks.useUtils();
+  const { data: models } = trpcHooks.models.list.useQuery();
+  const createMutation = trpcHooks.endpoints.create.useMutation({
+    onSuccess: async (result) => {
+      await utils.endpoints.list.invalidate();
+      onSuccess(result as EndpointCreateResponse);
+    },
+  });
 
   function handlePathChange(value: string) {
     setPath(value);
@@ -45,34 +45,19 @@ export function EndpointForm({ onSuccess, onCancel }: EndpointFormProps) {
     });
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setError(null);
 
     if (!PATH_REGEX.test(path)) {
       setPathError("Only lowercase letters, numbers, and hyphens");
       return;
     }
 
-    setSubmitting(true);
-    try {
-      const result = await createEndpoint({
-        name,
-        path,
-        modelIds: Array.from(selectedModelIds),
-      });
-      onSuccess(result);
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message.includes("DUPLICATE_PATH")
-            ? "This path is already in use"
-            : err.message
-          : "Failed to create endpoint",
-      );
-    } finally {
-      setSubmitting(false);
-    }
+    createMutation.mutate({
+      name,
+      path,
+      modelIds: Array.from(selectedModelIds),
+    });
   }
 
   return (
@@ -99,7 +84,7 @@ export function EndpointForm({ onSuccess, onCancel }: EndpointFormProps) {
       </div>
       <div className="space-y-2">
         <Label>Models</Label>
-        {models.length === 0 ? (
+        {!models || models.length === 0 ? (
           <p className="text-sm text-muted-foreground">No models available</p>
         ) : (
           <div className="max-h-48 space-y-1 overflow-y-auto rounded border p-2">
@@ -118,13 +103,19 @@ export function EndpointForm({ onSuccess, onCancel }: EndpointFormProps) {
           </div>
         )}
       </div>
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {createMutation.error && (
+        <p className="text-sm text-destructive">
+          {createMutation.error.message.includes("DUPLICATE_PATH")
+            ? "This path is already in use"
+            : createMutation.error.message}
+        </p>
+      )}
       <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit" disabled={submitting || !!pathError}>
-          {submitting ? "Creating..." : "Create"}
+        <Button type="submit" disabled={createMutation.isPending || !!pathError}>
+          {createMutation.isPending ? "Creating..." : "Create"}
         </Button>
       </div>
     </form>

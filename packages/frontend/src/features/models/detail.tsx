@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,8 +15,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { trpcReact as trpcHooks } from "@/lib/trpc";
 import type { ModelResponse } from "./api";
-import { fetchModel, updateModel, testResolution, deleteModel, fetchModels } from "./api";
 
 type ResolutionStep = {
   modelId: string;
@@ -28,14 +28,11 @@ type ResolutionStep = {
 export function ModelDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [model, setModel] = useState<ModelResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  const initIdRef = useRef<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
 
   // Test resolution
-  const [testing, setTesting] = useState(false);
   const [resolutionSteps, setResolutionSteps] = useState<ResolutionStep[] | null>(null);
 
   // Delete
@@ -50,34 +47,61 @@ export function ModelDetailPage() {
   const [baseModelId, setBaseModelId] = useState("");
   const [overridesText, setOverridesText] = useState("");
   const [overridesError, setOverridesError] = useState<string | null>(null);
-  const [selectableBases, setSelectableBases] = useState<ModelResponse[]>([]);
 
-  const load = useCallback(async () => {
-    if (!id) return;
-    setLoading(true);
-    try {
-      const [data, allModels] = await Promise.all([fetchModel(id), fetchModels()]);
-      setModel(data);
-      setDisplayName(data.displayName);
-      if (data.type === "real") setProviderModel(data.providerModel);
-      if (data.type === "virtual" && data.variant === "fallback") setFallbackChain(data.fallbackChain);
-      if (data.type === "virtual" && data.variant === "tuned") {
-        setBaseModelId(data.baseModelId);
-        setOverridesText(Object.keys(data.overrides).length > 0 ? JSON.stringify(data.overrides, null, 2) : "");
+  const modelQuery = trpcHooks.models.get.useQuery({ id: id! }, { enabled: !!id });
+  const modelsQuery = trpcHooks.models.list.useQuery();
+  const utils = trpcHooks.useUtils();
+  const model = modelQuery.data as ModelResponse | undefined;
+  const allModels = (modelsQuery.data ?? []) as ModelResponse[];
+  const loading = modelQuery.isLoading;
+
+  // Sync form state
+  useEffect(() => {
+    if (model && initIdRef.current !== id) {
+      setDisplayName(model.displayName);
+      if (model.type === "real") setProviderModel(model.providerModel);
+      if (model.type === "virtual" && model.variant === "fallback") setFallbackChain(model.fallbackChain);
+      if (model.type === "virtual" && model.variant === "tuned") {
+        setBaseModelId(model.baseModelId);
+        setOverridesText(Object.keys(model.overrides).length > 0 ? JSON.stringify(model.overrides, null, 2) : "");
       }
-      setSelectableBases(allModels.filter((m) => m.type === "real" || (m.type === "virtual" && m.variant === "tuned")));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load model");
-    } finally {
-      setLoading(false);
+      initIdRef.current = id ?? null;
     }
-  }, [id]);
+  }, [model, id]);
 
-  useEffect(() => { load(); }, [load]);
+  const updateMutation = trpcHooks.models.update.useMutation({
+    onSuccess: async () => {
+      await utils.models.get.invalidate({ id });
+      await utils.models.list.invalidate();
+    },
+  });
 
-  async function handleSave() {
+  const testMutation = trpcHooks.models.testResolution.useMutation({
+    onSuccess: (result) => {
+      setResolutionSteps(result.steps as ResolutionStep[]);
+    },
+    onError: () => {
+      setResolutionSteps([]);
+    },
+  });
+
+  const deleteMutation = trpcHooks.models.delete.useMutation({
+    onSuccess: async () => {
+      navigate("/models");
+    },
+    onError: (err) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      const match = msg.match(/HAS_DEPENDENTS:(.+)/);
+      if (match) {
+        setDeleteDependents((match[1] ?? "").split(","));
+      }
+    },
+  });
+
+  const selectableBases = allModels.filter((m) => m.type === "real" || (m.type === "virtual" && m.variant === "tuned"));
+
+  function handleSave() {
     if (!id) return;
-    setSaving(true);
     setError(null);
 
     const input: Record<string, unknown> = { id, displayName };
@@ -93,7 +117,6 @@ export function ModelDetailPage() {
           input.overrides = JSON.parse(overridesText);
         } catch {
           setOverridesError("Invalid JSON");
-          setSaving(false);
           return;
         }
       } else {
@@ -101,43 +124,25 @@ export function ModelDetailPage() {
       }
     }
 
-    try {
-      const updated = await updateModel(input as Parameters<typeof updateModel>[0]);
-      setModel(updated);
-      setEditing(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update");
-    } finally {
-      setSaving(false);
-    }
+    updateMutation.mutate(input as Parameters<typeof updateMutation.mutate>[0], {
+      onSuccess: () => {
+        setEditing(false);
+      },
+      onError: (err) => {
+        setError(err instanceof Error ? err.message : "Failed to update");
+      },
+    });
   }
 
-  async function handleTest() {
+  function handleTest() {
     if (!id) return;
-    setTesting(true);
     setResolutionSteps(null);
-    try {
-      const result = await testResolution(id);
-      setResolutionSteps(result.steps);
-    } catch {
-      setResolutionSteps([]);
-    } finally {
-      setTesting(false);
-    }
+    testMutation.mutate({ id });
   }
 
-  async function handleDelete() {
+  function handleDelete() {
     if (!id) return;
-    try {
-      await deleteModel(id);
-      navigate("/models");
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      const match = msg.match(/HAS_DEPENDENTS:(.+)/);
-      if (match) {
-        setDeleteDependents((match[1] ?? "").split(","));
-      }
-    }
+    deleteMutation.mutate({ id });
   }
 
   // Fallback chain editing helpers
@@ -162,6 +167,8 @@ export function ModelDetailPage() {
     next[target] = temp!;
     setFallbackChain(next);
   }
+
+  const saving = updateMutation.isPending;
 
   if (loading) {
     return <div className="space-y-4">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-10 animate-pulse rounded bg-muted" />)}</div>;
@@ -190,8 +197,8 @@ export function ModelDetailPage() {
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Details</CardTitle>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={handleTest} disabled={testing}>
-              {testing ? "Testing..." : "Test Resolution"}
+            <Button variant="outline" onClick={handleTest} disabled={testMutation.isPending}>
+              {testMutation.isPending ? "Testing..." : "Test Resolution"}
             </Button>
             {!editing && <Button variant="outline" onClick={() => setEditing(true)}>Edit</Button>}
           </div>
@@ -365,7 +372,7 @@ export function ModelDetailPage() {
               {deleteDependents ? "Close" : "Cancel"}
             </Button>
             {!deleteDependents && (
-              <Button variant="destructive" onClick={handleDelete}>Delete</Button>
+              <Button variant="destructive" onClick={handleDelete} disabled={deleteMutation.isPending}>Delete</Button>
             )}
           </div>
         </DialogContent>

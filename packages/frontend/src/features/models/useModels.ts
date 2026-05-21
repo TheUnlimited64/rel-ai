@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
+import { trpcReact as trpcHooks } from "@/lib/trpc";
 import type { ModelResponse } from "./api";
-import { fetchModels, deleteModel } from "./api";
 
 export type ModelTypeFilter = "all" | "real" | "virtual";
 
@@ -12,41 +12,32 @@ function parseDependents(error: unknown): string[] | null {
 }
 
 export function useModels() {
-  const [models, setModels] = useState<ModelResponse[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const query = trpcHooks.models.list.useQuery();
+  const utils = trpcHooks.useUtils();
   const [typeFilter, setTypeFilter] = useState<ModelTypeFilter>("all");
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await fetchModels();
-      setModels(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load models");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const deleteMutation = trpcHooks.models.delete.useMutation({
+    onSuccess: async (_result, { id }) => {
+      utils.models.list.setData(undefined, (prev) =>
+        prev ? prev.filter((x) => x.id !== id) : prev,
+      );
+    },
+  });
 
-  useEffect(() => { load(); }, [load]);
-
-  const remove = useCallback(async (id: string) => {
+  const remove = async (id: string): Promise<string[] | null> => {
     try {
-      await deleteModel(id);
-      setModels((prev) => prev.filter((x) => x.id !== id));
+      await deleteMutation.mutateAsync({ id });
       return null;
     } catch (err) {
       return parseDependents(err);
     }
-  }, []);
+  };
 
-  const filtered = models.filter((m) => {
+  const models = ((query.data ?? []) as ModelResponse[]).filter((m) => {
     if (typeFilter === "all") return true;
     if (typeFilter === "real") return m.type === "real";
     return m.type === "virtual";
   });
 
-  return { models: filtered, loading, error, reload: load, remove, typeFilter, setTypeFilter };
+  return { models, loading: query.isLoading, error: query.error?.message ?? null, reload: () => utils.models.list.invalidate(), remove, deleteMutation, typeFilter, setTypeFilter };
 }

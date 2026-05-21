@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,8 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import type { EndpointGetResponse, ModelListResponse } from "./api";
-import { fetchEndpoint, updateEndpoint, regenerateToken, fetchModels } from "./api";
+import { trpcReact as trpcHooks } from "@/lib/trpc";
+import type { EndpointGetResponse } from "./api";
 
 const PATH_REGEX = /^[a-z0-9-]+$/;
 const PROXY_BASE = "http://localhost:3000/v1";
@@ -17,10 +17,8 @@ const PROXY_BASE = "http://localhost:3000/v1";
 export function EndpointDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [endpoint, setEndpoint] = useState<EndpointGetResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  const initIdRef = useRef<string | null>(null);
   const [editing, setEditing] = useState(false);
-  const [allModels, setAllModels] = useState<ModelListResponse[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   // Edit state
@@ -28,30 +26,43 @@ export function EndpointDetailPage() {
   const [path, setPath] = useState("");
   const [pathError, setPathError] = useState<string | null>(null);
   const [selectedModelIds, setSelectedModelIds] = useState<Set<string>>(new Set());
-  const [saving, setSaving] = useState(false);
 
   // Token regeneration
   const [showRegenConfirm, setShowRegenConfirm] = useState(false);
   const [newToken, setNewToken] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    if (!id) return;
-    setLoading(true);
-    try {
-      const [data, models] = await Promise.all([fetchEndpoint(id), fetchModels()]);
-      setEndpoint(data);
-      setAllModels(models);
-      setName(data.name);
-      setPath(data.path);
-      setSelectedModelIds(new Set(data.models.map((m) => m.id)));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load endpoint");
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
+  const endpointQuery = trpcHooks.endpoints.get.useQuery({ id: id! }, { enabled: !!id });
+  const modelsQuery = trpcHooks.models.list.useQuery();
+  const utils = trpcHooks.useUtils();
+  const endpoint = endpointQuery.data as EndpointGetResponse | undefined;
+  const allModels = modelsQuery.data ?? [];
+  const loading = endpointQuery.isLoading;
 
-  useEffect(() => { load(); }, [load]);
+  // Sync form state when data loads
+  useEffect(() => {
+    if (endpoint && initIdRef.current !== id) {
+      setName(endpoint.name);
+      setPath(endpoint.path);
+      setSelectedModelIds(new Set(endpoint.models.map((m) => m.id)));
+      initIdRef.current = id ?? null;
+    }
+  }, [endpoint, id]);
+
+  const updateMutation = trpcHooks.endpoints.update.useMutation({
+    onSuccess: async () => {
+      await utils.endpoints.get.invalidate({ id });
+      await utils.endpoints.list.invalidate();
+    },
+  });
+
+  const regenMutation = trpcHooks.endpoints.regenerateToken.useMutation({
+    onSuccess: (result) => {
+      setNewToken(result.token);
+    },
+    onError: () => {
+      setError("Failed to regenerate token");
+    },
+  });
 
   function handlePathChange(value: string) {
     setPath(value);
@@ -71,42 +82,45 @@ export function EndpointDetailPage() {
     });
   }
 
-  async function handleSave() {
+  function handleSave() {
     if (!id || pathError) return;
-    setSaving(true);
     setError(null);
-    try {
-      const updated = await updateEndpoint({
+    updateMutation.mutate(
+      {
         id,
         name,
         path,
         modelIds: Array.from(selectedModelIds),
-      });
-      setEndpoint(updated);
-      setEditing(false);
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message.includes("DUPLICATE_PATH")
-            ? "This path is already in use"
-            : err.message
-          : "Failed to update",
-      );
-    } finally {
-      setSaving(false);
-    }
+      },
+      {
+        onSuccess: () => {
+          setEditing(false);
+        },
+        onError: (err) => {
+          setError(
+            err instanceof Error
+              ? err.message.includes("DUPLICATE_PATH")
+                ? "This path is already in use"
+                : err.message
+              : "Failed to update",
+          );
+        },
+      },
+    );
   }
 
-  async function handleRegenerate() {
+  function handleRegenerate() {
     if (!id) return;
     setShowRegenConfirm(false);
-    try {
-      const result = await regenerateToken(id);
-      setNewToken(result.token);
-    } catch {
-      setError("Failed to regenerate token");
-    }
+    regenMutation.mutate({ id });
   }
+
+  function handleToggle(checked: boolean) {
+    if (!endpoint) return;
+    updateMutation.mutate({ id: endpoint.id, enabled: checked });
+  }
+
+  const saving = updateMutation.isPending;
 
   if (loading) {
     return (
@@ -139,10 +153,8 @@ export function EndpointDetailPage() {
             <span className="text-sm text-muted-foreground">Enabled</span>
             <Switch
               checked={endpoint.enabled}
-              onCheckedChange={async (checked) => {
-                const updated = await updateEndpoint({ id: endpoint.id, enabled: checked });
-                setEndpoint(updated);
-              }}
+              onCheckedChange={handleToggle}
+              disabled={updateMutation.isPending}
             />
           </div>
         </CardHeader>
