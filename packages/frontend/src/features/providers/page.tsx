@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useProviders } from "./useProviders";
+import { useProviders } from "./hooks/useProviders";
 import { ProviderTable } from "./components/ProviderTable";
 import { ProviderForm } from "./components/ProviderForm";
 
@@ -13,10 +13,19 @@ export function ProvidersPage() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const navigate = useNavigate();
 
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
   async function handleDelete() {
     if (!deleteId) return;
-    try { await remove(deleteId); } catch { /* already removed from state */ }
+    setDeleteError(null);
+    try { await remove(deleteId); } catch { setDeleteError("Failed to delete provider"); }
     setDeleteId(null);
+  }
+
+  function handleCreateSuccess(providerId: string) {
+    setShowCreate(false);
+    reload();
+    navigate(`/providers/${providerId}`);
   }
 
   if (loading) {
@@ -43,6 +52,10 @@ export function ProvidersPage() {
         <p className="text-sm text-destructive">{error}</p>
       )}
 
+      {deleteError && (
+        <p className="text-sm text-destructive">{deleteError}</p>
+      )}
+
       <Card>
         <CardHeader><CardTitle>Configured Providers</CardTitle></CardHeader>
         <CardContent>
@@ -58,7 +71,7 @@ export function ProvidersPage() {
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
         <DialogContent>
           <DialogHeader><DialogTitle>Add Provider</DialogTitle></DialogHeader>
-          <ProviderForm onSuccess={() => { setShowCreate(false); reload(); }} onCancel={() => setShowCreate(false)} />
+          <ProviderForm onSuccess={handleCreateSuccess} onCancel={() => setShowCreate(false)} />
         </DialogContent>
       </Dialog>
 

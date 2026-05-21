@@ -1,5 +1,5 @@
 import { trpcReact as trpcHooks } from "@/lib/trpc";
-import type { ProviderResponse } from "./api";
+import type { ProviderResponse } from "../api";
 
 export function useProviders() {
   const query = trpcHooks.providers.list.useQuery();

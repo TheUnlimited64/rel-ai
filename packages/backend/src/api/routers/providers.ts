@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure } from "../trpc.js";
 import { AdapterTypeSchema } from "@rel-ai/shared";
 import {
@@ -8,6 +9,7 @@ import {
   updateProvider,
   deleteProvider,
   testProviderConnection,
+  regenerateApiKey,
 } from "../../core/provider/service.js";
 
 const CreateProviderInputSchema = z.object({
@@ -40,6 +42,17 @@ const TestConnectionInputSchema = z.object({
   id: z.string().min(1),
 });
 
+async function mapNotFound<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (e) {
+    if (e instanceof Error && e.message === "NOT_FOUND") {
+      throw new TRPCError({ code: "NOT_FOUND", message: "Provider not found" });
+    }
+    throw e;
+  }
+}
+
 export const providersRouter = createTRPCRouter({
   create: protectedProcedure
     .input(CreateProviderInputSchema)
@@ -54,24 +67,30 @@ export const providersRouter = createTRPCRouter({
   get: protectedProcedure
     .input(GetProviderInputSchema)
     .query(async ({ ctx, input }) => {
-      return getProvider(ctx.db, input.id);
+      return mapNotFound(() => getProvider(ctx.db, input.id));
     }),
 
   update: protectedProcedure
     .input(UpdateProviderInputSchema)
     .mutation(async ({ ctx, input }) => {
-      return updateProvider(ctx.db, input);
+      return mapNotFound(() => updateProvider(ctx.db, input));
     }),
 
   delete: protectedProcedure
     .input(DeleteProviderInputSchema)
     .mutation(async ({ ctx, input }) => {
-      return deleteProvider(ctx.db, input.id);
+      return mapNotFound(() => deleteProvider(ctx.db, input.id));
     }),
 
   testConnection: protectedProcedure
     .input(TestConnectionInputSchema)
     .mutation(async ({ ctx, input }) => {
-      return testProviderConnection(ctx.db, input.id);
+      return mapNotFound(() => testProviderConnection(ctx.db, input.id));
+    }),
+
+  regenerateApiKey: protectedProcedure
+    .input(GetProviderInputSchema)
+    .mutation(async ({ ctx, input }) => {
+      return mapNotFound(() => regenerateApiKey(ctx.db, input.id));
     }),
 });

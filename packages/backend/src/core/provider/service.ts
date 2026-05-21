@@ -18,6 +18,10 @@ export interface ProviderResponse {
   updatedAt: string;
 }
 
+export interface CreateProviderResponse extends ProviderResponse {
+  apiKeyRaw: string;
+}
+
 function toResponse(row: ProviderRow, maskedKey: string): ProviderResponse {
   return {
     id: row.id,
@@ -36,7 +40,7 @@ export async function maskApiKey(encryptedKey: string): Promise<string> {
   try {
     const decrypted = await decrypt(encryptedKey);
     if (decrypted.length <= 3) return "****";
-    return `${decrypted.slice(0, 3)}****`;
+    return `${decrypted.slice(0, 3)}...${decrypted.slice(-4)}`;
   } catch {
     return "****";
   }
@@ -51,7 +55,7 @@ export async function createProvider(
     apiKey: string;
     config?: Record<string, unknown>;
   },
-): Promise<ProviderResponse> {
+): Promise<CreateProviderResponse> {
   const id = crypto.randomUUID();
   const encryptedKey = await encrypt(input.apiKey);
   const configJson = input.config ? JSON.stringify(input.config) : null;
@@ -72,7 +76,7 @@ export async function createProvider(
 
   const row = db.select().from(providers).where(eq(providers.id, id)).get()!;
   const masked = await maskApiKey(encryptedKey);
-  return toResponse(row, masked);
+  return { ...toResponse(row, masked), apiKeyRaw: input.apiKey };
 }
 
 export async function listProviders(db: DbClient): Promise<ProviderResponse[]> {
@@ -129,11 +133,34 @@ export async function deleteProvider(db: DbClient, id: string): Promise<{ succes
   const existing = db.select().from(providers).where(eq(providers.id, id)).get();
   if (!existing) throw new Error("NOT_FOUND");
 
-  // Cascade delete related models
-  db.delete(models).where(eq(models.providerId, id)).run();
-  db.delete(providers).where(eq(providers.id, id)).run();
+  // Cascade delete related models in transaction
+  db.transaction((tx) => {
+    tx.delete(models).where(eq(models.providerId, id)).run();
+    tx.delete(providers).where(eq(providers.id, id)).run();
+  });
 
   return { success: true };
+}
+
+export async function regenerateApiKey(
+  db: DbClient,
+  id: string,
+): Promise<CreateProviderResponse> {
+  const row = db.select().from(providers).where(eq(providers.id, id)).get();
+  if (!row) throw new Error("NOT_FOUND");
+
+  const rawKey = `sk_${crypto.randomUUID().replace(/-/g, "")}`;
+  const encryptedKey = await encrypt(rawKey);
+  const now = new Date().toISOString().replace("T", " ").split(".")[0]!;
+
+  db.update(providers)
+    .set({ apiKey: encryptedKey, updatedAt: now })
+    .where(eq(providers.id, id))
+    .run();
+
+  const updated = db.select().from(providers).where(eq(providers.id, id)).get()!;
+  const masked = await maskApiKey(encryptedKey);
+  return { ...toResponse(updated, masked), apiKeyRaw: rawKey };
 }
 
 export async function testProviderConnection(
