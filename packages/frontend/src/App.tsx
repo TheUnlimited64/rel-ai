@@ -1,6 +1,8 @@
 import { RouterProvider, createBrowserRouter } from "react-router-dom";
 import { Layout } from "./Layout";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { AuthProvider, RequireAuth, RedirectIfAuth } from "./lib/auth";
+import { LoginPage } from "./features/auth/login";
 import { ProvidersPage } from "./features/providers/page";
 import { ProviderDetailPage } from "./features/providers/detail";
 import { EndpointsPage } from "./features/endpoints/page";
@@ -12,7 +14,19 @@ import { TokensPage } from "./features/auth/page";
 
 const router = createBrowserRouter([
   {
-    element: <Layout />,
+    element: (
+      <RedirectIfAuth>
+        <LoginPage />
+      </RedirectIfAuth>
+    ),
+    path: "/login",
+  },
+  {
+    element: (
+      <RequireAuth>
+        <Layout />
+      </RequireAuth>
+    ),
     errorElement: <ErrorBoundary />,
     children: [
       { index: true, element: <ProvidersPage /> },
@@ -29,5 +43,9 @@ const router = createBrowserRouter([
 ]);
 
 export function App() {
-  return <RouterProvider router={router} />;
+  return (
+    <AuthProvider>
+      <RouterProvider router={router} />
+    </AuthProvider>
+  );
 }

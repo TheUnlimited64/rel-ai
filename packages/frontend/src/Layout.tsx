@@ -1,4 +1,6 @@
 import { Outlet, NavLink } from "react-router-dom";
+import { useAuth } from "./lib/auth";
+import { Button } from "./components/ui/button";
 
 const navItems = [
   { to: "/providers", label: "Providers" },
@@ -9,6 +11,8 @@ const navItems = [
 ] as const;
 
 export function Layout() {
+  const { logout } = useAuth();
+
   return (
     <div className="flex h-screen">
       <aside className="hidden w-64 shrink-0 border-r border-border bg-sidebar-background md:block">
@@ -32,6 +36,11 @@ export function Layout() {
             </NavLink>
           ))}
         </nav>
+        <div className="absolute bottom-0 left-0 w-64 border-t border-sidebar-border p-4">
+          <Button variant="ghost" size="default" className="w-full justify-start" onClick={logout}>
+            Sign Out
+          </Button>
+        </div>
       </aside>
       <main className="flex-1 overflow-auto bg-background p-6">
         <Outlet />
