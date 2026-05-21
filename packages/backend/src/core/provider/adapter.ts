@@ -12,7 +12,7 @@ export interface ProviderAdapter {
 
   parseSSEChunk(chunk: string): ParsedChunk | null;
 
-  parseError(response: Response): ProviderError;
+  parseError(response: Response): Promise<ProviderError>;
 
   isRateLimitError(error: ProviderError): boolean;
 }
