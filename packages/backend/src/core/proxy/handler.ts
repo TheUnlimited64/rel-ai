@@ -1,0 +1,468 @@
+import type { ProxyRequest, ProxyResult, ProxyError, RequestLogData } from "./types.js";
+import type { ProviderAdapter } from "../provider/adapter.js";
+import type { ProviderError as PProviderError } from "../provider/types.js";
+import { ModelResolver } from "../model/resolver.js";
+import { AdapterRegistry } from "../provider/registry.js";
+import {
+  ModelNotFoundError,
+  AllProvidersFailedError,
+} from "../model/errors.js";
+import {
+  formatStreamChunk,
+  formatStreamDone,
+  formatCompletion,
+  generateId,
+} from "./formatter.js";
+
+const DEFAULT_TIMEOUT = 120_000;
+const MAX_FALLBACK_ATTEMPTS = 5;
+
+type FetchFn = typeof fetch;
+
+export interface ProxyHandlerOptions {
+  resolver: ModelResolver;
+  registry: AdapterRegistry;
+  timeout?: number;
+  fetchFn?: FetchFn;
+  onLog?: (log: RequestLogData) => void;
+}
+
+export class ProxyHandler {
+  private resolver: ModelResolver;
+  private registry: AdapterRegistry;
+  private timeout: number;
+  private fetchFn: FetchFn;
+  private onLog?: (log: RequestLogData) => void;
+
+  constructor(options: ProxyHandlerOptions) {
+    this.resolver = options.resolver;
+    this.registry = options.registry;
+    this.timeout = options.timeout ?? DEFAULT_TIMEOUT;
+    this.fetchFn = options.fetchFn ?? globalThis.fetch;
+    this.onLog = options.onLog;
+  }
+
+  async handle(request: ProxyRequest): Promise<ProxyResult> {
+    const start = Date.now();
+    const id = generateId();
+
+    // Retry loop: on rate limit, mark unhealthy and try next provider
+    const attemptedProviders = new Set<string>();
+
+    for (let attempt = 0; attempt < MAX_FALLBACK_ATTEMPTS; attempt++) {
+      // Resolve model — unhealthy providers are skipped by resolver
+      let resolved;
+      try {
+        resolved = this.resolver.resolve(request.model);
+      } catch (err) {
+        const status = err instanceof ModelNotFoundError ? 404
+          : err instanceof AllProvidersFailedError ? 503
+          : 500;
+        const error: ProxyError = {
+          code: err instanceof ModelNotFoundError ? "model_not_found"
+            : err instanceof AllProvidersFailedError ? "all_providers_failed"
+            : "internal_error",
+          message: err instanceof Error ? err.message : "Unknown error",
+          type: err instanceof Error ? err.name : "Error",
+        };
+        this.emitLog({
+          model: request.model,
+          providerId: "",
+          providerModel: "",
+          adapterType: "",
+          stream: request.stream,
+          status,
+          durationMs: Date.now() - start,
+          error: error.message,
+        });
+        return { ok: false, status, error };
+      }
+
+      const { providerId, providerModel, adapterType, overrides } = resolved;
+
+      // Prevent retrying the same provider
+      if (attemptedProviders.has(providerId)) continue;
+      attemptedProviders.add(providerId);
+
+      const adapter = this.registry.get(adapterType);
+
+      // Merge model-level overrides with request overrides
+      const mergedOverrides = { ...overrides, ...request.overrides };
+
+      const providerRequest = adapter.createRequest({
+        model: providerModel,
+        messages: request.messages,
+        stream: request.stream,
+        overrides: mergedOverrides,
+      });
+
+      let response: Response;
+      try {
+        response = await this.fetchWithTimeout(providerRequest.url, {
+          method: "POST",
+          headers: providerRequest.headers,
+          body: JSON.stringify(providerRequest.body),
+        });
+      } catch (err) {
+        const isTimeout = isTimeoutError(err);
+        const status = isTimeout ? 504 : 502;
+        const error: ProxyError = {
+          code: isTimeout ? "timeout" : "network_error",
+          message: err instanceof Error ? err.message : "Network error",
+          type: isTimeout ? "TimeoutError" : "NetworkError",
+        };
+        this.emitLog({
+          model: request.model,
+          providerId,
+          providerModel,
+          adapterType,
+          stream: request.stream,
+          status,
+          durationMs: Date.now() - start,
+          error: error.message,
+        });
+        return { ok: false, status, error };
+      }
+
+      // Handle provider errors
+      if (!response.ok) {
+        let providerError: PProviderError;
+        try {
+          providerError = await adapter.parseError(response);
+        } catch {
+          providerError = {
+            code: "unknown",
+            message: `Provider returned status ${response.status}`,
+            status: response.status,
+            retryable: response.status >= 500,
+          };
+        }
+
+        // Rate limit before streaming starts → mark unhealthy and retry with next provider
+        if (adapter.isRateLimitError(providerError)) {
+          this.resolver.markUnhealthy(providerId);
+          // Continue to next iteration — resolver will skip this provider
+          continue;
+        }
+
+        // Non-rate-limit error → return immediately
+        const error: ProxyError = {
+          code: providerError.code,
+          message: providerError.message,
+          type: "provider_error",
+        };
+
+        this.emitLog({
+          model: request.model,
+          providerId,
+          providerModel,
+          adapterType,
+          stream: request.stream,
+          status: providerError.status,
+          durationMs: Date.now() - start,
+          error: error.message,
+        });
+
+        return { ok: false, status: providerError.status, error };
+      }
+
+      // Success — proceed with streaming or non-streaming
+      if (request.stream) {
+        return this.handleStream(id, request.model, providerModel, adapterType, providerId, response, adapter, start, request.stream);
+      }
+
+      return this.handleNonStream(id, request.model, providerModel, adapterType, providerId, response, adapter, start, request.stream);
+    }
+
+    // Exhausted all fallback attempts
+    const error: ProxyError = {
+      code: "all_providers_failed",
+      message: "All providers rate-limited or unavailable",
+      type: "ProviderError",
+    };
+    this.emitLog({
+      model: request.model,
+      providerId: "",
+      providerModel: "",
+      adapterType: "",
+      stream: request.stream,
+      status: 503,
+      durationMs: Date.now() - start,
+      error: error.message,
+    });
+    return { ok: false, status: 503, error };
+  }
+
+  private handleStream(
+    id: string,
+    model: string,
+    providerModel: string,
+    adapterType: string,
+    providerId: string,
+    response: Response,
+    adapter: ProviderAdapter,
+    start: number,
+    isStream: boolean,
+  ): ProxyResult {
+    const body = response.body;
+    if (!body) {
+      const error: ProxyError = {
+        code: "no_body",
+        message: "Provider returned no body for stream",
+        type: "provider_error",
+      };
+      this.emitLog({
+        model,
+        providerId,
+        providerModel,
+        adapterType,
+        stream: isStream,
+        status: 502,
+        durationMs: Date.now() - start,
+        error: error.message,
+      });
+      return { ok: false, status: 502, error };
+    }
+
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let totalUsage: { promptTokens: number; completionTokens: number } | undefined;
+    let hadError = false;
+
+    const stream = new ReadableStream<Uint8Array>({
+      pull: async (controller) => {
+        try {
+          const { done, value } = await reader.read();
+          if (done) {
+            // Flush remaining buffer
+            if (buffer.trim()) {
+              const parsed = adapter.parseSSEChunk(buffer);
+              if (parsed) {
+                if (parsed.usage) {
+                  totalUsage = mergeUsage(totalUsage, parsed.usage);
+                }
+                if (parsed.content || parsed.thinking) {
+                  const chunk = formatStreamChunk(id, providerModel, {
+                    ...parsed,
+                    done: false,
+                  });
+                  controller.enqueue(new TextEncoder().encode(chunk));
+                }
+              }
+            }
+            // Send final chunk with done
+            const finalChunk = formatStreamChunk(id, providerModel, {
+              done: true,
+              ...(totalUsage ? { usage: totalUsage } : {}),
+            });
+            controller.enqueue(new TextEncoder().encode(finalChunk));
+            controller.enqueue(new TextEncoder().encode(formatStreamDone()));
+            controller.close();
+
+            this.emitLog({
+              model,
+              providerId,
+              providerModel,
+              adapterType,
+              stream: isStream,
+              status: 200,
+              durationMs: Date.now() - start,
+              tokens: totalUsage,
+            });
+            return;
+          }
+
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split("\n\n");
+          // Keep last incomplete part in buffer
+          buffer = parts.pop() ?? "";
+
+          for (const part of parts) {
+            if (!part.trim()) continue;
+            const parsed = adapter.parseSSEChunk(part);
+            if (!parsed) continue;
+
+            if (parsed.usage) {
+              totalUsage = mergeUsage(totalUsage, parsed.usage);
+            }
+
+            if (parsed.done) {
+              // Don't send yet; will send in the done handler above
+              continue;
+            }
+
+            if (parsed.content || parsed.thinking) {
+              const chunk = formatStreamChunk(id, providerModel, parsed);
+              controller.enqueue(new TextEncoder().encode(chunk));
+            }
+          }
+        } catch (err) {
+          if (!hadError) {
+            hadError = true;
+            const errorMsg = err instanceof Error ? err.message : "Stream error";
+            this.emitLog({
+              model,
+              providerId,
+              providerModel,
+              adapterType,
+              stream: isStream,
+              status: 500,
+              durationMs: Date.now() - start,
+              error: errorMsg,
+            });
+          }
+          controller.error(err);
+        }
+      },
+      cancel: async () => {
+        await reader.cancel();
+      },
+    });
+
+    return {
+      ok: true,
+      status: 200,
+      body: stream,
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      },
+    };
+  }
+
+  private async handleNonStream(
+    id: string,
+    model: string,
+    providerModel: string,
+    adapterType: string,
+    providerId: string,
+    response: Response,
+    adapter: ProviderAdapter,
+    start: number,
+    isStream: boolean,
+  ): Promise<ProxyResult> {
+    let content: string;
+    let usage: { promptTokens: number; completionTokens: number };
+
+    // If the provider response is SSE despite non-stream request, parse it
+    const contentType = response.headers.get("content-type") ?? "";
+    if (contentType.includes("text/event-stream") || contentType.includes("text/")) {
+      // Read the whole body as text and parse SSE chunks
+      const text = await response.text();
+      let accumulated = "";
+      let totalUsage: { promptTokens: number; completionTokens: number } | undefined;
+
+      const parts = text.split("\n\n");
+      for (const part of parts) {
+        if (!part.trim()) continue;
+        const parsed = adapter.parseSSEChunk(part);
+        if (!parsed) continue;
+        if (parsed.content) accumulated += parsed.content;
+        if (parsed.usage) totalUsage = mergeUsage(totalUsage, parsed.usage);
+      }
+
+      content = accumulated || "";
+      usage = totalUsage ?? { promptTokens: 0, completionTokens: 0 };
+    } else {
+      // JSON response — parse and normalize
+      const json = await response.json() as Record<string, unknown>;
+
+      // Try OpenAI format
+      const choices = json.choices as Array<Record<string, unknown>> | undefined;
+      if (choices && choices.length > 0) {
+        const msg = choices[0]!.message as Record<string, unknown> | undefined;
+        content = (msg?.content as string) ?? "";
+      } else {
+        // Anthropic non-stream format
+        const jsonContent = json.content as Array<Record<string, unknown>> | undefined;
+        if (jsonContent) {
+          content = jsonContent
+            .filter((b) => b.type === "text")
+            .map((b) => b.text as string)
+            .join("");
+        } else {
+          content = "";
+        }
+      }
+
+      const jsonUsage = json.usage as Record<string, unknown> | undefined;
+      if (jsonUsage) {
+        usage = {
+          promptTokens: (jsonUsage.prompt_tokens as number) ?? (jsonUsage.input_tokens as number) ?? 0,
+          completionTokens: (jsonUsage.completion_tokens as number) ?? (jsonUsage.output_tokens as number) ?? 0,
+        };
+      } else {
+        usage = { promptTokens: 0, completionTokens: 0 };
+      }
+    }
+
+    const body = formatCompletion(id, providerModel, content, usage);
+
+    this.emitLog({
+      model,
+      providerId,
+      providerModel,
+      adapterType,
+      stream: isStream,
+      status: 200,
+      durationMs: Date.now() - start,
+      tokens: usage,
+    });
+
+    return {
+      ok: true,
+      status: 200,
+      body,
+      headers: { "Content-Type": "application/json" },
+    };
+  }
+
+  private async fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeout);
+
+    try {
+      const response = await this.fetchFn(url, {
+        ...init,
+        signal: controller.signal,
+      });
+      return response;
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") {
+        throw new TimeoutError(this.timeout);
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  private emitLog(log: RequestLogData): void {
+    this.onLog?.(log);
+  }
+}
+
+class TimeoutError extends Error {
+  constructor(timeoutMs: number) {
+    super(`Request timed out after ${timeoutMs}ms`);
+    this.name = "TimeoutError";
+  }
+}
+
+// Re-export for consumers who need isTimeoutError
+export function isTimeoutError(err: unknown): err is TimeoutError {
+  return err instanceof TimeoutError;
+}
+
+function mergeUsage(
+  existing: { promptTokens: number; completionTokens: number } | undefined,
+  incoming: { promptTokens: number; completionTokens: number },
+): { promptTokens: number; completionTokens: number } {
+  if (!existing) return { ...incoming };
+  return {
+    promptTokens: Math.max(existing.promptTokens, incoming.promptTokens),
+    completionTokens: existing.completionTokens + incoming.completionTokens,
+  };
+}
