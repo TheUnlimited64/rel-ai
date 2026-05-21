@@ -16,6 +16,7 @@ import { decrypt } from "./core/auth/encryption.js";
 import { providers, models as modelsTable } from "./db/schema/index.js";
 import { eq } from "drizzle-orm";
 import type { Model, Provider } from "@rel-ai/shared";
+import { RequestLogger } from "./core/logging/logger.js";
 
 const db = createDb();
 migrate(db, { migrationsFolder: "./src/db/migrations" });
@@ -89,11 +90,15 @@ const resolver = new ModelResolver({
   getProvider: getProviderFromDb,
 });
 
+// Initialize request logger
+const requestLogger = new RequestLogger(db);
+
 const proxyHandler = new ProxyHandler({
   resolver,
   registry,
   getProviderCredentials,
   fetchFn: globalThis.fetch,
+  onLog: (log) => requestLogger.logFromProxy(log),
 });
 
 const app = new Hono();

@@ -5,6 +5,7 @@ export type ProxyRequest = {
   messages: Message[];
   stream: boolean;
   overrides?: Record<string, unknown>;
+  endpointId?: string;
 };
 
 export type ProxyResult =
@@ -27,4 +28,5 @@ export type RequestLogData = {
   durationMs: number;
   tokens?: TokenUsage;
   error?: string;
+  endpointId?: string;
 };

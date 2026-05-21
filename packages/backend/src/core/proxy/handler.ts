@@ -53,6 +53,7 @@ export class ProxyHandler {
   async handle(request: ProxyRequest): Promise<ProxyResult> {
     const start = Date.now();
     const id = generateId();
+    const endpointId = request.endpointId;
 
     // Retry loop: on rate limit, mark unhealthy and try next provider
     const attemptedProviders = new Set<string>();
@@ -82,6 +83,7 @@ export class ProxyHandler {
           status,
           durationMs: Date.now() - start,
           error: error.message,
+          endpointId,
         });
         return { ok: false, status, error };
       }
@@ -139,6 +141,7 @@ export class ProxyHandler {
           status,
           durationMs: Date.now() - start,
           error: error.message,
+          endpointId,
         });
         return { ok: false, status, error };
       }
@@ -180,6 +183,7 @@ export class ProxyHandler {
           status: providerError.status,
           durationMs: Date.now() - start,
           error: error.message,
+          endpointId,
         });
 
         return { ok: false, status: providerError.status, error };
@@ -187,10 +191,10 @@ export class ProxyHandler {
 
       // Success — proceed with streaming or non-streaming
       if (request.stream) {
-        return this.handleStream(id, request.model, providerModel, adapterType, providerId, response, adapter, start, request.stream);
+        return this.handleStream(id, request.model, providerModel, adapterType, providerId, response, adapter, start, request.stream, endpointId);
       }
 
-      return this.handleNonStream(id, request.model, providerModel, adapterType, providerId, response, adapter, start, request.stream);
+      return this.handleNonStream(id, request.model, providerModel, adapterType, providerId, response, adapter, start, request.stream, endpointId);
     }
 
     // Exhausted all fallback attempts
@@ -208,6 +212,7 @@ export class ProxyHandler {
       status: 503,
       durationMs: Date.now() - start,
       error: error.message,
+      endpointId,
     });
     return { ok: false, status: 503, error };
   }
@@ -222,6 +227,7 @@ export class ProxyHandler {
     adapter: ProviderAdapter,
     start: number,
     isStream: boolean,
+    endpointId?: string,
   ): ProxyResult {
     const body = response.body;
     if (!body) {
@@ -239,6 +245,7 @@ export class ProxyHandler {
         status: 502,
         durationMs: Date.now() - start,
         error: error.message,
+        endpointId,
       });
       return { ok: false, status: 502, error };
     }
@@ -288,6 +295,7 @@ export class ProxyHandler {
               status: 200,
               durationMs: Date.now() - start,
               tokens: totalUsage,
+              endpointId,
             });
             return;
           }
@@ -329,6 +337,7 @@ export class ProxyHandler {
               status: 500,
               durationMs: Date.now() - start,
               error: errorMsg,
+              endpointId,
             });
           }
           controller.error(err);
@@ -361,6 +370,7 @@ export class ProxyHandler {
     adapter: ProviderAdapter,
     start: number,
     isStream: boolean,
+    endpointId?: string,
   ): Promise<ProxyResult> {
     let content: string;
     let usage: { promptTokens: number; completionTokens: number };
@@ -428,6 +438,7 @@ export class ProxyHandler {
       status: 200,
       durationMs: Date.now() - start,
       tokens: usage,
+      endpointId,
     });
 
     return {

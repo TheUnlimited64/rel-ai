@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { ProxyHandler } from "../core/proxy/handler.js";
+import type { RequestLogData } from "../core/proxy/types.js";
 import type { DbClient } from "../db/connection.js";
 import { validateEndpointToken } from "../core/auth/endpoint.js";
 import { endpointModels, models } from "../db/schema/index.js";
@@ -125,6 +126,7 @@ export function createProxyRouter(db: DbClient, handler: ProxyHandler) {
       model,
       messages: messages as Array<{ role: "system" | "user" | "assistant"; content: string }>,
       stream,
+      endpointId: endpoint.id,
     };
 
     const requestId = crypto.randomUUID();
