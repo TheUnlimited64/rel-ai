@@ -5,8 +5,8 @@ export class OpenAIAdapter implements ProviderAdapter {
   readonly type = "openai";
 
   constructor(
-    private apiKey: string,
-    private baseUrl: string,
+    private defaultApiKey?: string,
+    private defaultBaseUrl?: string,
   ) {}
 
   createRequest(params: {
@@ -15,17 +15,23 @@ export class OpenAIAdapter implements ProviderAdapter {
     stream: boolean;
     overrides?: Record<string, unknown>;
   }): { url: string; headers: Record<string, string>; body: unknown } {
+    const apiKey = (params.overrides?.apiKey as string) ?? this.defaultApiKey ?? "";
+    const baseUrl = (params.overrides?.baseUrl as string) ?? this.defaultBaseUrl ?? "https://api.openai.com";
+
+    // Strip internal keys from overrides before passing to body
+    const { apiKey: _a, baseUrl: _b, ...restOverrides } = params.overrides ?? ({} as Record<string, unknown>);
+
     const body: Record<string, unknown> = {
       model: params.model,
       messages: params.messages,
       stream: params.stream,
-      ...params.overrides,
+      ...restOverrides,
     };
 
     return {
-      url: `${this.baseUrl}/chat/completions`,
+      url: `${baseUrl}/chat/completions`,
       headers: {
-        Authorization: `Bearer ${this.apiKey}`,
+        Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
       body,

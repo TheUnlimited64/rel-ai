@@ -19,9 +19,15 @@ const MAX_FALLBACK_ATTEMPTS = 5;
 
 type FetchFn = typeof fetch;
 
+export interface ProviderCredentials {
+  baseUrl: string;
+  apiKey: string;
+}
+
 export interface ProxyHandlerOptions {
   resolver: ModelResolver;
   registry: AdapterRegistry;
+  getProviderCredentials?: (providerId: string) => Promise<ProviderCredentials | null>;
   timeout?: number;
   fetchFn?: FetchFn;
   onLog?: (log: RequestLogData) => void;
@@ -30,6 +36,7 @@ export interface ProxyHandlerOptions {
 export class ProxyHandler {
   private resolver: ModelResolver;
   private registry: AdapterRegistry;
+  private getProviderCredentials?: (providerId: string) => Promise<ProviderCredentials | null>;
   private timeout: number;
   private fetchFn: FetchFn;
   private onLog?: (log: RequestLogData) => void;
@@ -37,6 +44,7 @@ export class ProxyHandler {
   constructor(options: ProxyHandlerOptions) {
     this.resolver = options.resolver;
     this.registry = options.registry;
+    this.getProviderCredentials = options.getProviderCredentials;
     this.timeout = options.timeout ?? DEFAULT_TIMEOUT;
     this.fetchFn = options.fetchFn ?? globalThis.fetch;
     this.onLog = options.onLog;
@@ -84,10 +92,21 @@ export class ProxyHandler {
       if (attemptedProviders.has(providerId)) continue;
       attemptedProviders.add(providerId);
 
+      // Look up provider credentials (baseUrl, apiKey) if available
+      let credentials: ProviderCredentials | null = null;
+      if (this.getProviderCredentials) {
+        credentials = await this.getProviderCredentials(providerId);
+      }
+
       const adapter = this.registry.get(adapterType);
 
       // Merge model-level overrides with request overrides
-      const mergedOverrides = { ...overrides, ...request.overrides };
+      // Inject provider credentials into overrides so adapters can use them
+      const mergedOverrides = {
+        ...overrides,
+        ...request.overrides,
+        ...(credentials ? { baseUrl: credentials.baseUrl, apiKey: credentials.apiKey } : {}),
+      };
 
       const providerRequest = adapter.createRequest({
         model: providerModel,

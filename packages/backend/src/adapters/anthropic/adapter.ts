@@ -24,7 +24,7 @@ export class AnthropicAdapter implements ProviderAdapter {
 
     const max_tokens = (overrides?.max_tokens as number | undefined) ?? 4096;
 
-    const { baseUrl: _b, max_tokens: _m, ...restOverrides } = overrides ?? ({} as Record<string, unknown>);
+    const { baseUrl: _b, max_tokens: _m, apiKey: _a, ...restOverrides } = overrides ?? ({} as Record<string, unknown>);
 
     const body: Record<string, unknown> = {
       model,
