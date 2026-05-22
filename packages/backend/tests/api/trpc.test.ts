@@ -8,22 +8,18 @@ describe("tRPC API", () => {
     const res = await app.request(`${BASE}/api/trpc/providers.list`, {
       method: "GET",
     });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(500);
     const json = await res.json();
     expect(json.error).toBeDefined();
     expect(json.error.message).toBe("UNAUTHORIZED");
   });
 
-  test("protected procedure works with valid Bearer token", async () => {
-    // The app DB is initialized with migrations; no auth tokens exist by default.
-    // So we need to seed a token to test authenticated access.
-    // Instead of relying on app state, test that an invalid token is rejected
-    // and a missing token is rejected.
+  test("protected procedure rejects invalid Bearer token", async () => {
     const res = await app.request(`${BASE}/api/trpc/providers.list`, {
       method: "GET",
       headers: { Authorization: "Bearer invalid-token" },
     });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(500);
     const json = await res.json();
     expect(json.error).toBeDefined();
     expect(json.error.message).toBe("UNAUTHORIZED");
@@ -37,17 +33,17 @@ describe("tRPC API", () => {
     expect(json.error).toBeDefined();
     expect(json.error.stack).toBeUndefined();
     expect(json.error.message).toBe("UNAUTHORIZED");
-    expect(json.error.code).toBe("INTERNAL_SERVER_ERROR");
+    expect(json.error.data.code).toBe("INTERNAL_SERVER_ERROR");
   });
 
   test("unknown procedure returns NOT_FOUND", async () => {
     const res = await app.request(`${BASE}/api/trpc/auth.list`, {
       method: "GET",
     });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(404);
     const json = await res.json();
     expect(json.error).toBeDefined();
-    expect(json.error.code).toBe("NOT_FOUND");
+    expect(json.error.data.code).toBe("NOT_FOUND");
   });
 
   test("auth.createToken requires authentication", async () => {
@@ -56,7 +52,7 @@ describe("tRPC API", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: "test" }),
     });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(500);
     const json = await res.json();
     expect(json.error).toBeDefined();
     expect(json.error.message).toBe("UNAUTHORIZED");

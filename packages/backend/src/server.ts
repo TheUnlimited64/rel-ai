@@ -40,34 +40,7 @@ export interface StartedServer {
   db: DbClient;
 }
 
-export async function startServer(opts?: StartServerOptions): Promise<StartedServer> {
-  const port = opts?.port ?? Number(process.env.PORT || 3000);
-  const db = opts?.dbPath === ":memory:"
-    ? createMemoryDb()
-    : createDb(opts?.dbPath);
-
-  migrate(db, { migrationsFolder: path.join(__dirname, "db/migrations") });
-  await migratePlaintextApiKeys(db);
-
-  // First-run: auto-create admin token if none exist (atomic via transaction)
-  const tokenRows = db.select({ count: count() }).from(authTokens).all();
-  if (tokenRows[0]?.count === 0) {
-    const { token, hash } = await generateToken();
-    db.transaction((tx) => {
-      const row = tx.select({ count: count() }).from(authTokens).get();
-      if (row && row.count === 0) {
-        const id = crypto.randomUUID();
-        tx.insert(authTokens).values({ id, name: "Initial Admin Token", tokenHash: hash }).run();
-        console.log(`\n🔑 First-run admin token created: ${token}\n`);
-      }
-    });
-  }
-
-  // Production ENCRYPTION_KEY warning
-  if (process.env.NODE_ENV === "production" && !process.env.ENCRYPTION_KEY) {
-    console.warn("⚠️ Running in production without ENCRYPTION_KEY set. Keys will not persist across restarts.");
-  }
-
+export function createApp(db: DbClient): Hono {
   const createContext = createContextFactory(db);
 
   // Initialize adapter registry
@@ -165,6 +138,38 @@ export async function startServer(opts?: StartServerOptions): Promise<StartedSer
   // SPA fallback
   app.get("*", serveStatic({ root: publicDir, path: "index.html" }));
 
+  return app;
+}
+
+export async function startServer(opts?: StartServerOptions): Promise<StartedServer> {
+  const port = opts?.port ?? Number(process.env.PORT || 3000);
+  const db = opts?.dbPath === ":memory:"
+    ? createMemoryDb()
+    : createDb(opts?.dbPath);
+
+  migrate(db, { migrationsFolder: path.join(__dirname, "db/migrations") });
+  await migratePlaintextApiKeys(db);
+
+  // First-run: auto-create admin token if none exist (atomic via transaction)
+  const tokenRows = db.select({ count: count() }).from(authTokens).all();
+  if (tokenRows[0]?.count === 0) {
+    const { token, hash } = await generateToken();
+    db.transaction((tx) => {
+      const row = tx.select({ count: count() }).from(authTokens).get();
+      if (row && row.count === 0) {
+        const id = crypto.randomUUID();
+        tx.insert(authTokens).values({ id, name: "Initial Admin Token", tokenHash: hash }).run();
+        console.log(`\n🔑 First-run admin token created: ${token}\n`);
+      }
+    });
+  }
+
+  // Production ENCRYPTION_KEY warning
+  if (process.env.NODE_ENV === "production" && !process.env.ENCRYPTION_KEY) {
+    console.warn("⚠️ Running in production without ENCRYPTION_KEY set. Keys will not persist across restarts.");
+  }
+
+  const app = createApp(db);
   const server = Bun.serve({ fetch: app.fetch, port });
 
   return {

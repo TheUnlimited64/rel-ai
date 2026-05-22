@@ -40,7 +40,7 @@ export async function maskApiKey(encryptedKey: string): Promise<string> {
   try {
     const decrypted = await decrypt(encryptedKey);
     if (decrypted.length <= 3) return "****";
-    return `${decrypted.slice(0, 3)}...${decrypted.slice(-4)}`;
+    return `${decrypted.slice(0, 3)}****`;
   } catch {
     return "****";
   }

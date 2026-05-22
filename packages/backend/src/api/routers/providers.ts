@@ -47,7 +47,7 @@ async function mapNotFound<T>(fn: () => Promise<T>): Promise<T> {
     return await fn();
   } catch (e) {
     if (e instanceof Error && e.message === "NOT_FOUND") {
-      throw new TRPCError({ code: "NOT_FOUND", message: "Provider not found" });
+      throw new TRPCError({ code: "NOT_FOUND", message: "NOT_FOUND" });
     }
     throw e;
   }

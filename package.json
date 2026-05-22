@@ -7,6 +7,7 @@
     "check": "bun run --filter '*' check",
     "lint": "eslint 'packages/*/src/**/*.ts'",
     "start": "bun run --filter @rel-ai/backend start",
+    "test": "bun test packages/backend/tests/; bun test packages/shared/src/; bun run --filter @rel-ai/frontend test",
     "test:e2e": "bun run --filter @rel-ai/frontend test:e2e"
   },
   "devDependencies": {
