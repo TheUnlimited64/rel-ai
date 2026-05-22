@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { trpcReact as trpcHooks } from "@/lib/trpc";
+import { formatMutationError } from "@/lib/format-error";
 import { EndpointModelManager } from "./EndpointModelManager";
 
 const formSchema = z.object({
@@ -55,7 +56,7 @@ export function EndpointForm({ onSuccess, onCancel, skipLabel = "Cancel" }: Endp
       </div>
       <EndpointModelManager models={(models ?? []).map((m) => ({ id: m.id, displayName: m.displayName, type: m.type }))} selectedModelIds={selectedModelIds} onToggle={toggleModel} />
       {createMutation.error && (
-        <p className="text-sm text-destructive">{createMutation.error.message.includes("DUPLICATE_PATH") ? "This path is already in use" : createMutation.error.message}</p>
+        <p className="text-sm text-destructive">{formatMutationError(createMutation.error)}</p>
       )}
       <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={onCancel}>{skipLabel}</Button>

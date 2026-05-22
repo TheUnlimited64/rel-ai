@@ -2,14 +2,7 @@ import { initTRPC } from "@trpc/server";
 import type { tRPCContext } from "./context.js";
 import { authMiddleware } from "./middleware/auth.js";
 
-const t = initTRPC.context<tRPCContext>().create({
-  errorFormatter({ shape }) {
-    return {
-      message: shape.message,
-      code: shape.data.code,
-    };
-  },
-});
+const t = initTRPC.context<tRPCContext>().create();
 
 const loggingMiddleware = t.middleware(async ({ path, next }) => {
   const start = Date.now();

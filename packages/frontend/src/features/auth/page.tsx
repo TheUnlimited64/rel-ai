@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { trpcReact as trpcHooks } from "@/lib/trpc";
+import { formatMutationError } from "@/lib/format-error";
 import { TokenTable } from "./components/TokenTable";
 import { CreateTokenDialog } from "./components/CreateTokenDialog";
 import { TokenRevealDialog } from "./components/TokenRevealDialog";
@@ -28,7 +29,7 @@ export function TokensPage() {
       await utils.auth.listTokens.invalidate();
     },
     onError: (err) => {
-      setMutationError(err.message);
+      setMutationError(formatMutationError(err));
     },
   });
 
@@ -38,7 +39,7 @@ export function TokensPage() {
       await utils.auth.listTokens.invalidate();
     },
     onError: (err) => {
-      setMutationError(err.message);
+      setMutationError(formatMutationError(err));
     },
   });
 

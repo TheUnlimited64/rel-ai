@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { trpcReact as trpcHooks } from "@/lib/trpc";
+import { formatMutationError } from "@/lib/format-error";
 import { TunedModelEditor } from "./TunedModelEditor";
 import type { ModelListResponse } from "../api";
 
@@ -35,7 +36,7 @@ export function TunedCreateForm({ onSuccess, onError, onCancel }: TunedCreateFor
 
   const mutation = trpcHooks.models.createVirtualTuned.useMutation({
     onSuccess: async () => { await utils.models.list.invalidate(); onSuccess(); },
-    onError: (err) => onError(err.message),
+    onError: (err) => onError(formatMutationError(err)),
   });
 
   function onSubmit(data: FormValues) {

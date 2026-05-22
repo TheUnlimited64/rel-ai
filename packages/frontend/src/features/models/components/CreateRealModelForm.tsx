@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { trpcReact as trpcHooks } from "@/lib/trpc";
+import { formatMutationError } from "@/lib/format-error";
 
 const formSchema = z.object({
   id: z.string().min(1, "Model ID is required"),
@@ -77,7 +78,7 @@ export function CreateRealModelForm({ onSuccess, onCancel }: CreateRealModelForm
         <Input id="real-provider-model" {...register("providerModel")} placeholder="gpt-4o-2024-08-06" />
         {errors.providerModel && <p className="text-xs text-destructive">{errors.providerModel.message}</p>}
       </div>
-      {createMutation.error && <p className="text-sm text-destructive">{createMutation.error.message}</p>}
+      {createMutation.error && <p className="text-sm text-destructive">{formatMutationError(createMutation.error)}</p>}
       <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
         <Button type="submit" disabled={createMutation.isPending}>{createMutation.isPending ? "Creating..." : "Create"}</Button>

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { trpcReact as trpcHooks } from "@/lib/trpc";
+import { formatMutationError } from "@/lib/format-error";
 import { FallbackChainBuilder } from "./FallbackChainBuilder";
 
 const schema = z.object({
@@ -30,7 +31,7 @@ export function FallbackCreateForm({ onSuccess, onError, onCancel }: FallbackCre
 
   const mutation = trpcHooks.models.createVirtualFallback.useMutation({
     onSuccess: async () => { await utils.models.list.invalidate(); onSuccess(); },
-    onError: (err) => onError(err.message),
+    onError: (err) => onError(formatMutationError(err)),
   });
 
   function onSubmit(data: FormValues) {

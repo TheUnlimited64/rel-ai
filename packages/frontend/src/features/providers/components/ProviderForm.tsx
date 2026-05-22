@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { trpcReact as trpcHooks } from "@/lib/trpc";
+import { formatMutationError } from "@/lib/format-error";
 import { AdapterTypeSchema, type AdapterType } from "@rel-ai/shared";
 import { ADAPTER_TYPES, type CreateProviderResponse } from "../api";
 import { ApiKeyRevealDialog } from "./ApiKeyRevealDialog";
@@ -82,7 +83,7 @@ export function ProviderForm({ onSuccess, onCancel }: ProviderFormProps) {
           <Textarea id="config" {...register("config")} placeholder='{"key": "value"}' rows={3} />
           {errors.config && <p className="text-xs text-destructive">{errors.config.message}</p>}
         </div>
-        {createMutation.error && <p className="text-sm text-destructive">{createMutation.error.message}</p>}
+        {createMutation.error && <p className="text-sm text-destructive">{formatMutationError(createMutation.error)}</p>}
         <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
           <Button type="submit" disabled={createMutation.isPending}>{createMutation.isPending ? "Creating..." : "Create"}</Button>
