@@ -6,7 +6,6 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { trpcReact as trpcHooks } from "@/lib/trpc";
-import { getProxyBase } from "./api";
 import { EndpointEditForm } from "./components/EndpointEditForm";
 import { EndpointRegenerateConfirm } from "./components/EndpointRegenerateToken";
 import { NewTokenDialog } from "./components/NewTokenDialog";
@@ -45,7 +44,7 @@ export function EndpointDetailPage() {
 
   if (endpointQuery.isLoading) return <div className="space-y-4">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-10 animate-pulse rounded bg-muted" />)}</div>;
   if (!endpoint) return <p className="text-destructive">Endpoint not found</p>;
-  const proxyUrl = `${getProxyBase()}/${endpoint.path}/chat/completions`;
+  const proxyUrl = `${endpoint.proxyBase}/${endpoint.path}/chat/completions`;
 
   return (
     <div className="space-y-6">

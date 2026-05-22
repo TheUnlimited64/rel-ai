@@ -14,6 +14,7 @@ const mockEndpoints: EndpointListResponse[] = [
     createdAt: "2024-01-01",
     updatedAt: "2024-01-01",
     modelCount: 3,
+    proxyBase: "http://localhost:3000/v1",
   },
   {
     id: "2",
@@ -23,6 +24,7 @@ const mockEndpoints: EndpointListResponse[] = [
     createdAt: "2024-01-02",
     updatedAt: "2024-01-02",
     modelCount: 1,
+    proxyBase: "http://localhost:3000/v1",
   },
 ];
 

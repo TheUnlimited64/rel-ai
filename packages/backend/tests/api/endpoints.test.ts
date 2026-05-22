@@ -87,12 +87,14 @@ describe("Endpoints CRUD", () => {
     expect(created.token).toBeDefined();
     expect(created.token.length).toBe(64); // 32 bytes hex
     expect(created.enabled).toBe(true);
+    expect(created.proxyBase).toBe("http://localhost:3000/v1");
 
     // List
     const list = await caller.endpoints.list();
     expect(list.length).toBe(1);
     expect(list[0]!.id).toBe(created.id);
     expect(list[0]!.modelCount).toBe(1);
+    expect(list[0]!.proxyBase).toBe("http://localhost:3000/v1");
     // Token not in list
     expect((list[0] as any).token).toBeUndefined();
     expect((list[0] as any).tokenHash).toBeUndefined();
@@ -102,6 +104,7 @@ describe("Endpoints CRUD", () => {
     expect(got.name).toBe("Test Endpoint");
     expect(got.models.length).toBe(1);
     expect(got.models[0]!.id).toBe(modelId);
+    expect(got.proxyBase).toBe("http://localhost:3000/v1");
     expect((got as any).token).toBeUndefined();
     expect((got as any).tokenHash).toBeUndefined();
 

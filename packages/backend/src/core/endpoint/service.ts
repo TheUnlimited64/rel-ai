@@ -7,6 +7,10 @@ import type { DbClient } from "../../db/connection.js";
 
 export type EndpointRow = typeof endpoints.$inferSelect;
 
+function getProxyBase(): string {
+  return process.env.PROXY_BASE_URL ?? `http://localhost:${process.env.PORT || 3000}/v1`;
+}
+
 export interface EndpointCreateResponse {
   id: string;
   name: string;
@@ -15,6 +19,7 @@ export interface EndpointCreateResponse {
   enabled: boolean;
   createdAt: string;
   updatedAt: string;
+  proxyBase: string;
 }
 
 export interface EndpointListResponse {
@@ -25,6 +30,7 @@ export interface EndpointListResponse {
   createdAt: string;
   updatedAt: string;
   modelCount: number;
+  proxyBase: string;
 }
 
 export interface EndpointGetResponse {
@@ -35,6 +41,7 @@ export interface EndpointGetResponse {
   createdAt: string;
   updatedAt: string;
   models: { id: string; displayName: string }[];
+  proxyBase: string;
 }
 
 const PATH_REGEX = /^[a-z0-9-]+$/;
@@ -78,6 +85,8 @@ export async function createEndpoint(
 
   const row = db.select().from(endpoints).where(eq(endpoints.id, id)).get()!;
 
+  const proxyBase = getProxyBase();
+
   return {
     id: row.id,
     name: row.name,
@@ -86,6 +95,7 @@ export async function createEndpoint(
     enabled: row.enabled,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
+    proxyBase,
   };
 }
 
@@ -108,6 +118,7 @@ export async function listEndpoints(db: DbClient): Promise<EndpointListResponse[
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
       modelCount: Number(countResult.count),
+      proxyBase: getProxyBase(),
     });
   }
 
@@ -143,6 +154,7 @@ export async function getEndpoint(
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     models: modelList,
+    proxyBase: getProxyBase(),
   };
 }
 

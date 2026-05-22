@@ -1,5 +1,4 @@
 import type { EndpointListResponse } from "../api";
-import { getProxyBase } from "../api";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,8 +11,8 @@ interface EndpointTableProps {
   onClickRow: (id: string) => void;
 }
 
-function copyUrl(path: string) {
-  navigator.clipboard.writeText(`${getProxyBase()}/${path}/chat/completions`);
+function copyUrl(proxyBase: string, path: string) {
+  navigator.clipboard.writeText(`${proxyBase}/${path}/chat/completions`);
 }
 
 export function EndpointTable({ endpoints, onToggle, onDelete, onClickRow }: EndpointTableProps) {
@@ -52,7 +51,7 @@ export function EndpointTable({ endpoints, onToggle, onDelete, onClickRow }: End
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={(e) => { e.stopPropagation(); copyUrl(ep.path); }}
+                  onClick={(e) => { e.stopPropagation(); copyUrl(ep.proxyBase, ep.path); }}
                 >
                   Copy URL
                 </Button>

@@ -7,6 +7,7 @@ services:
       - rel-ai-data:/app/data
     environment:
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - PROXY_BASE_URL=${PROXY_BASE_URL}
 
 volumes:
   rel-ai-data:

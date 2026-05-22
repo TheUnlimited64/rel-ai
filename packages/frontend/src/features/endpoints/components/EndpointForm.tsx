@@ -15,7 +15,7 @@ const formSchema = z.object({
 type FormValues = z.infer<typeof formSchema>;
 
 interface EndpointFormProps {
-  onSuccess: (created: { id: string; name: string; path: string; token: string; enabled: boolean; createdAt: string; updatedAt: string }) => void;
+  onSuccess: (created: { id: string; name: string; path: string; token: string; enabled: boolean; createdAt: string; updatedAt: string; proxyBase: string }) => void;
   onCancel: () => void;
   skipLabel?: string;
 }

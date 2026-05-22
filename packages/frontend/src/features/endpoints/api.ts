@@ -6,6 +6,7 @@ export type EndpointListResponse = {
   createdAt: string;
   updatedAt: string;
   modelCount: number;
+  proxyBase: string;
 };
 
 export type EndpointGetResponse = {
@@ -16,6 +17,7 @@ export type EndpointGetResponse = {
   createdAt: string;
   updatedAt: string;
   models: { id: string; displayName: string }[];
+  proxyBase: string;
 };
 
 export type EndpointCreateResponse = {
@@ -26,6 +28,7 @@ export type EndpointCreateResponse = {
   enabled: boolean;
   createdAt: string;
   updatedAt: string;
+  proxyBase: string;
 };
 
 export type ModelListResponse = {
@@ -34,7 +37,3 @@ export type ModelListResponse = {
   type: string;
   variant?: string;
 };
-
-export function getProxyBase(): string {
-  return import.meta.env.VITE_PROXY_BASE ?? window.location.origin + "/v1";
-}
