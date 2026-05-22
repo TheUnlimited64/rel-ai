@@ -6,6 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useProviders } from "./hooks/useProviders";
 import { ProviderTable } from "./components/ProviderTable";
 import { ProviderForm } from "./components/ProviderForm";
+import { useFirstRun } from "../wizard/useFirstRun";
+import { WizardFlow } from "../wizard/WizardFlow";
 
 export function ProvidersPage() {
   const { providers, loading, error, reload, toggleEnabled, remove } = useProviders();
@@ -14,6 +16,8 @@ export function ProvidersPage() {
   const navigate = useNavigate();
 
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const { isFirstRun, loading: firstRunLoop } = useFirstRun();
+  const [wizardDismissed, setWizardDismissed] = useState(false);
 
   async function handleDelete() {
     if (!deleteId) return;
@@ -56,17 +60,28 @@ export function ProvidersPage() {
         <p className="text-sm text-destructive">{deleteError}</p>
       )}
 
-      <Card>
-        <CardHeader><CardTitle>Configured Providers</CardTitle></CardHeader>
-        <CardContent>
-          <ProviderTable
-            providers={providers}
-            onToggle={toggleEnabled}
-            onDelete={setDeleteId}
-            onClickRow={(id) => navigate(`/providers/${id}`)}
-          />
-        </CardContent>
-      </Card>
+      {isFirstRun && !wizardDismissed ? (
+        <div className="space-y-4">
+          <WizardFlow onComplete={() => setWizardDismissed(true)} />
+          <div className="flex justify-end">
+            <Button variant="ghost" size="sm" onClick={() => setWizardDismissed(true)}>
+              Skip setup
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <Card>
+          <CardHeader><CardTitle>Configured Providers</CardTitle></CardHeader>
+          <CardContent>
+            <ProviderTable
+              providers={providers}
+              onToggle={toggleEnabled}
+              onDelete={setDeleteId}
+              onClickRow={(id) => navigate(`/providers/${id}`)}
+            />
+          </CardContent>
+        </Card>
+      )}
 
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
         <DialogContent>

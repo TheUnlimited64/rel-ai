@@ -1,6 +1,7 @@
-import { Outlet, NavLink } from "react-router-dom";
+import { Outlet, NavLink, Link } from "react-router-dom";
 import { useAuth } from "./lib/auth";
 import { Button } from "./components/ui/button";
+import { useFirstRun } from "./features/wizard/useFirstRun";
 
 const navItems = [
   { to: "/providers", label: "Providers" },
@@ -12,6 +13,8 @@ const navItems = [
 
 export function Layout() {
   const { logout } = useAuth();
+  const { isFirstRun, loading: firstRunLoop } = useFirstRun();
+  const dismissed = sessionStorage.getItem("wizardDismissed");
 
   return (
     <div className="flex h-screen">
@@ -42,9 +45,22 @@ export function Layout() {
           </Button>
         </div>
       </aside>
-      <main className="flex-1 overflow-auto bg-background p-6">
-        <Outlet />
-      </main>
+      <div className="flex flex-1 flex-col overflow-hidden">
+        {isFirstRun && !firstRunLoop && !dismissed && (
+          <div className="flex items-center gap-3 border-b bg-muted/50 px-6 py-2 text-sm">
+            <span className="flex-1">Setup incomplete — add a provider and token to get started.</span>
+            <Link to="/providers">
+              <Button variant="outline" size="sm">Complete Setup</Button>
+            </Link>
+            <Button variant="ghost" size="sm" onClick={() => sessionStorage.setItem("wizardDismissed", "1")}>
+              Dismiss
+            </Button>
+          </div>
+        )}
+        <main className="flex-1 overflow-auto bg-background p-6">
+          <Outlet />
+        </main>
+      </div>
     </div>
   );
 }

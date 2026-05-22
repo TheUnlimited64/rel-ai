@@ -7,3 +7,4 @@ export {
   generateId,
 } from "./formatter.js";
 export type { OpenAIStreamChunk, OpenAICompletion } from "./formatter.js";
+export { parseOpenAISSE, parseOpenAIError, isOpenAIRateLimitError } from "./sse-utils.js";

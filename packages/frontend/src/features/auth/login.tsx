@@ -22,7 +22,7 @@ export function LoginPage() {
   } = useForm<FormValues>({ resolver: zodResolver(schema) });
 
   const verifyMutation = useMutation({
-    mutationFn: (data: { token: string }) => trpc.auth.verifyToken.query(data),
+    mutationFn: (data: { token: string }) => trpc.auth.verifyToken.mutate(data),
     onSuccess: (result, variables) => {
       if (result.valid) {
         login(variables.token);

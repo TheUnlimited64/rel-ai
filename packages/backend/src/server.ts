@@ -15,10 +15,13 @@ import { AdapterRegistry } from "./core/provider/registry.js";
 import { migratePlaintextApiKeys } from "./core/provider/migrate.js";
 import { OpenAIAdapter } from "./adapters/openai/adapter.js";
 import { AnthropicAdapter } from "./adapters/anthropic/adapter.js";
+import { PassthroughAdapter } from "./adapters/custom/index.js";
+import { generateToken } from "./core/auth/token.js";
 import { decrypt } from "./core/auth/encryption.js";
 import { resetEncryptionKey } from "./core/auth/encryption.js";
+import { authTokens } from "./db/schema/auth_tokens.js";
 import { providers, models as modelsTable } from "./db/schema/index.js";
-import { eq } from "drizzle-orm";
+import { eq, count } from "drizzle-orm";
 import type { Model, Provider } from "@rel-ai/shared";
 import { RequestLogger } from "./core/logging/logger.js";
 import path from "node:path";
@@ -46,16 +49,32 @@ export async function startServer(opts?: StartServerOptions): Promise<StartedSer
   migrate(db, { migrationsFolder: path.join(__dirname, "db/migrations") });
   await migratePlaintextApiKeys(db);
 
+  // First-run: auto-create admin token if none exist (atomic via transaction)
+  const tokenRows = db.select({ count: count() }).from(authTokens).all();
+  if (tokenRows[0]?.count === 0) {
+    const { token, hash } = await generateToken();
+    db.transaction((tx) => {
+      const row = tx.select({ count: count() }).from(authTokens).get();
+      if (row && row.count === 0) {
+        const id = crypto.randomUUID();
+        tx.insert(authTokens).values({ id, name: "Initial Admin Token", tokenHash: hash }).run();
+        console.log(`\n🔑 First-run admin token created: ${token}\n`);
+      }
+    });
+  }
+
+  // Production ENCRYPTION_KEY warning
+  if (process.env.NODE_ENV === "production" && !process.env.ENCRYPTION_KEY) {
+    console.warn("⚠️ Running in production without ENCRYPTION_KEY set. Keys will not persist across restarts.");
+  }
+
   const createContext = createContextFactory(db);
 
   // Initialize adapter registry
   const registry = new AdapterRegistry();
   registry.register(new OpenAIAdapter());
   registry.register(new AnthropicAdapter());
-  // "custom" providers use the OpenAI-compatible protocol
-  const customAdapter = new OpenAIAdapter();
-  (customAdapter as { type: string }).type = "custom";
-  registry.register(customAdapter as any);
+  registry.register(new PassthroughAdapter());
 
   // Build model lookup from DB
   function getModelFromDb(id: string): Model | undefined {

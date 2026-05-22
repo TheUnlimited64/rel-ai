@@ -17,9 +17,10 @@ type FormValues = z.infer<typeof formSchema>;
 interface EndpointFormProps {
   onSuccess: (created: { id: string; name: string; path: string; token: string; enabled: boolean; createdAt: string; updatedAt: string }) => void;
   onCancel: () => void;
+  skipLabel?: string;
 }
 
-export function EndpointForm({ onSuccess, onCancel }: EndpointFormProps) {
+export function EndpointForm({ onSuccess, onCancel, skipLabel = "Cancel" }: EndpointFormProps) {
   const [selectedModelIds, setSelectedModelIds] = useState<Set<string>>(new Set());
   const utils = trpcHooks.useUtils();
   const { data: models } = trpcHooks.models.list.useQuery();
@@ -57,7 +58,7 @@ export function EndpointForm({ onSuccess, onCancel }: EndpointFormProps) {
         <p className="text-sm text-destructive">{createMutation.error.message.includes("DUPLICATE_PATH") ? "This path is already in use" : createMutation.error.message}</p>
       )}
       <div className="flex justify-end gap-2">
-        <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
+        <Button type="button" variant="outline" onClick={onCancel}>{skipLabel}</Button>
         <Button type="submit" disabled={createMutation.isPending}>{createMutation.isPending ? "Creating..." : "Create"}</Button>
       </div>
     </form>
