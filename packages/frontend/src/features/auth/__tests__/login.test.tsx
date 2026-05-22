@@ -6,14 +6,14 @@ import { renderWithProviders } from "@/test-utils";
 import { LoginPage } from "../login";
 
 const mockLogin = vi.hoisted(() => vi.fn());
-const mockQuery = vi.hoisted(() => vi.fn());
+const mockMutate = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/auth", () => ({
   useAuth: () => ({ login: mockLogin, logout: vi.fn(), token: null, isAuthenticated: false }),
 }));
 
 vi.mock("@/lib/trpc", () => ({
-  trpc: { auth: { verifyToken: { query: mockQuery } } },
+  trpc: { auth: { verifyToken: { mutate: mockMutate } } },
 }));
 
 function renderLogin() {
@@ -30,7 +30,7 @@ function renderLogin() {
 describe("LoginPage", () => {
   beforeEach(() => {
     mockLogin.mockReset();
-    mockQuery.mockReset();
+    mockMutate.mockReset();
   });
 
   it("renders input and submit button", () => {
@@ -46,7 +46,7 @@ describe("LoginPage", () => {
   });
 
   it("successful login stores token and navigates", async () => {
-    mockQuery.mockResolvedValueOnce({ valid: true });
+    mockMutate.mockResolvedValueOnce({ valid: true });
     renderLogin();
     await userEvent.type(screen.getByPlaceholderText("Bearer token"), "valid-token");
     await userEvent.click(screen.getByText("Sign In"));
@@ -59,7 +59,7 @@ describe("LoginPage", () => {
   });
 
   it("failed login shows error message", async () => {
-    mockQuery.mockResolvedValueOnce({ valid: false });
+    mockMutate.mockResolvedValueOnce({ valid: false });
     renderLogin();
     await userEvent.type(screen.getByPlaceholderText("Bearer token"), "bad-token");
     await userEvent.click(screen.getByText("Sign In"));
