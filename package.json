@@ -6,6 +6,7 @@
   "scripts": {
     "check": "bun run --filter '*' check",
     "lint": "eslint 'packages/*/src/**/*.ts'",
+    "start": "bun run --filter @rel-ai/backend start",
     "test:e2e": "bun run --filter @rel-ai/frontend test:e2e"
   },
   "devDependencies": {
