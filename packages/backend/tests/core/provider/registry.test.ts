@@ -41,4 +41,10 @@ describe("AdapterRegistry", () => {
     expect(registry.has("mock2")).toBe(true);
     expect(registry.has("nonexistent")).toBe(false);
   });
+
+  test("throws on duplicate type registration", () => {
+    const registry = new AdapterRegistry();
+    registry.register(mockAdapter);
+    expect(() => registry.register(mockAdapter)).toThrow('Adapter type "mock" is already registered');
+  });
 });

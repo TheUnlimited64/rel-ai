@@ -2,13 +2,15 @@ import type { ProviderAdapter } from "../../core/provider/adapter.js";
 import type { Message, ParsedChunk, ProviderError } from "../../core/provider/types.js";
 import { parseOpenAISSE, parseOpenAIError, isOpenAIRateLimitError } from "../../core/proxy/sse-utils.js";
 
-export class OpenAIAdapter implements ProviderAdapter {
-  readonly type = "openai";
-
-  constructor(
-    private defaultApiKey?: string,
-    private defaultBaseUrl?: string,
-  ) {}
+/**
+ * PassthroughAdapter — forwards requests to any OpenAI-compatible API endpoint.
+ *
+ * Used as the default "custom" adapter. Messages pass through without
+ * transformation; SSE parsing assumes the upstream speaks the OpenAI
+ * chat-completions streaming protocol.
+ */
+export class PassthroughAdapter implements ProviderAdapter {
+  readonly type = "custom";
 
   createRequest(params: {
     model: string;
@@ -16,16 +18,21 @@ export class OpenAIAdapter implements ProviderAdapter {
     stream: boolean;
     overrides?: Record<string, unknown>;
   }): { url: string; headers: Record<string, string>; body: unknown } {
-    const apiKey = (params.overrides?.apiKey as string) ?? this.defaultApiKey ?? "";
-    const baseUrl = (params.overrides?.baseUrl as string) ?? this.defaultBaseUrl ?? "https://api.openai.com";
+    const { model, messages, stream, overrides } = params;
+    const baseUrl = (overrides?.baseUrl as string) ?? "";
+    const apiKey = (overrides?.apiKey as string) ?? "";
 
-    // Strip internal keys from overrides before passing to body
-    const { apiKey: _a, baseUrl: _b, ...restOverrides } = params.overrides ?? ({} as Record<string, unknown>);
+    if (!baseUrl) {
+      throw new Error("PassthroughAdapter: baseUrl is required (pass via overrides.baseUrl)");
+    }
+
+    // Strip internal keys before forwarding
+    const { apiKey: _a, baseUrl: _b, ...restOverrides } = overrides ?? ({} as Record<string, unknown>);
 
     const body: Record<string, unknown> = {
-      model: params.model,
-      messages: params.messages,
-      stream: params.stream,
+      model,
+      messages,
+      stream,
       ...restOverrides,
     };
 
