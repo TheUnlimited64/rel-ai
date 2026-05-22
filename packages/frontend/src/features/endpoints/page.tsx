@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { QueryError } from "@/components/QueryError";
 import { useEndpoints } from "./hooks/useEndpoints";
 import { EndpointTable } from "./components/EndpointTable";
 import { EndpointForm } from "./components/EndpointForm";
@@ -53,7 +54,7 @@ export function EndpointsPage() {
         <h1 className="text-2xl font-bold">Endpoints</h1>
         <Button onClick={() => setShowCreate(true)}>Add Endpoint</Button>
       </div>
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      <QueryError error={error} />
       <Card>
         <CardHeader><CardTitle>Configured Endpoints</CardTitle></CardHeader>
         <CardContent>

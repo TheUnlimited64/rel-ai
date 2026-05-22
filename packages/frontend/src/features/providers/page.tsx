@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { QueryError } from "@/components/QueryError";
 import { useProviders } from "./hooks/useProviders";
 import { ProviderTable } from "./components/ProviderTable";
 import { ProviderForm } from "./components/ProviderForm";
@@ -52,9 +53,7 @@ export function ProvidersPage() {
         <Button onClick={() => setShowCreate(true)}>Add Provider</Button>
       </div>
 
-      {error && (
-        <p className="text-sm text-destructive">{error}</p>
-      )}
+      <QueryError error={error} />
 
       {deleteError && (
         <p className="text-sm text-destructive">{deleteError}</p>

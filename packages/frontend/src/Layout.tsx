@@ -1,4 +1,5 @@
 import { Outlet, NavLink, Link } from "react-router-dom";
+import { Toaster } from "sonner";
 import { useAuth } from "./lib/auth";
 import { Button } from "./components/ui/button";
 import { useFirstRun } from "./features/wizard/useFirstRun";
@@ -60,6 +61,7 @@ export function Layout() {
         <main className="flex-1 overflow-auto bg-background p-6">
           <Outlet />
         </main>
+        <Toaster richColors closeButton />
       </div>
     </div>
   );

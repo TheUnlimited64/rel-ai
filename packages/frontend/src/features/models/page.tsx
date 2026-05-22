@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { QueryError } from "@/components/QueryError";
 import { useModels, type ModelTypeFilter } from "./useModels";
 import { ModelTable } from "./components/ModelTable";
 import { CreateRealModelForm } from "./components/CreateRealModelForm";
@@ -62,7 +63,7 @@ export function ModelsPage() {
         </div>
       </div>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      <QueryError error={error} />
 
       <div className="flex gap-2">
         {filterTabs.map((tab) => (

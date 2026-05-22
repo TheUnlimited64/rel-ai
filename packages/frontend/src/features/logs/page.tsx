@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { QueryError } from "@/components/QueryError";
 import { trpcReact as trpcHooks } from "@/lib/trpc";
 import { StatsCards } from "./components/StatsCards";
 import { LogTable } from "./components/LogTable";
@@ -66,7 +67,7 @@ export function LogsPage() {
         </div>
       </div>
 
-      {logsQuery.error && <p className="text-sm text-destructive">{logsQuery.error.message}</p>}
+      <QueryError error={logsQuery.error} />
       {stats && <StatsCards stats={stats} />}
 
       <LogFilters

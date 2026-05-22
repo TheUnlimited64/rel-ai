@@ -13,6 +13,8 @@ function customFetch(url: RequestInfo | URL, options?: RequestInit) {
       window.location.replace("/login");
     }
     return response;
+  }).catch(() => {
+    throw new Error("Unable to connect to server. Is the backend running?");
   });
 }
 
