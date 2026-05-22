@@ -6,8 +6,7 @@ services:
     volumes:
       - rel-ai-data:/app/data
     environment:
-      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
-    restart: unless-stopped
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
 
 volumes:
   rel-ai-data:
