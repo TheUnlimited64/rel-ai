@@ -20,10 +20,10 @@ export const models = sqliteTable(
     overrides: text("overrides"), // JSON
     createdAt: text("created_at")
       .notNull()
-      .default("(datetime('now'))"),
+      .default(sql`(datetime('now'))`),
     updatedAt: text("updated_at")
       .notNull()
-      .default("(datetime('now'))"),
+      .default(sql`(datetime('now'))`),
   },
   (table) => ({
     typeCheck: check(

@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   sqliteTable,
   text,
@@ -16,8 +17,8 @@ export const providers = sqliteTable("providers", {
   config: text("config"), // JSON string
   createdAt: text("created_at")
     .notNull()
-    .default("(datetime('now'))"),
+    .default(sql`(datetime('now'))`),
   updatedAt: text("updated_at")
     .notNull()
-    .default("(datetime('now'))"),
+    .default(sql`(datetime('now'))`),
 });

@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   sqliteTable,
   text,
@@ -12,7 +13,7 @@ export const authTokens = sqliteTable(
     tokenHash: text("token_hash").notNull(),
     createdAt: text("created_at")
       .notNull()
-      .default("(datetime('now'))"),
+      .default(sql`(datetime('now'))`),
     lastUsedAt: text("last_used_at"),
   },
   (table) => ({

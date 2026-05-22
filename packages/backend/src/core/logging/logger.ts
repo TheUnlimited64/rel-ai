@@ -44,6 +44,7 @@ export class RequestLogger {
       latencyMs: entry.latencyMs,
       status: mapStatus(entry.status),
       errorDetail: entry.errorDetail ?? null,
+      createdAt: new Date().toISOString(),
     }).run();
   }
 

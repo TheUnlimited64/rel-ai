@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   sqliteTable,
   text,
@@ -14,8 +15,8 @@ export const endpoints = sqliteTable("endpoints", {
     .default(true),
   createdAt: text("created_at")
     .notNull()
-    .default("(datetime('now'))"),
+    .default(sql`(datetime('now'))`),
   updatedAt: text("updated_at")
     .notNull()
-    .default("(datetime('now'))"),
+    .default(sql`(datetime('now'))`),
 });

@@ -24,7 +24,7 @@ export const requestLogs = sqliteTable(
     errorDetail: text("error_detail"),
     createdAt: text("created_at")
       .notNull()
-      .default("(datetime('now'))"),
+      .default(sql`(datetime('now'))`),
   },
   (table) => ({
     endpointIdx: index("idx_request_logs_endpoint").on(table.endpointId),
