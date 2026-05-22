@@ -7,3 +7,9 @@ dist
 test-results
 playwright-report
 tests/e2e/.auth
+
+# Encryption keys
+**/.encryption_key
+
+# Build artifacts
+packages/backend/public/
