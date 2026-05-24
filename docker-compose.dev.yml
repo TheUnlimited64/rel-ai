@@ -1,0 +1,12 @@
+# Dev override: source mounts + hot reload
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+services:
+  rel-ai:
+    command: bun --watch src/index.ts
+    volumes:
+      - ./packages/backend/src:/app/packages/backend/src
+      - ./packages/frontend/src:/app/packages/frontend/src
+      - ./packages/frontend/index.html:/app/packages/frontend/index.html
+    environment:
+      - NODE_ENV=development
+      - VITE_DOCKER=1

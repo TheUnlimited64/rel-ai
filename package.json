@@ -4,6 +4,7 @@
   "private": true,
   "workspaces": ["packages/*"],
   "scripts": {
+    "dev": "bun run --filter './packages/*' dev",
     "check": "bun run --filter '*' check",
     "lint": "eslint 'packages/*/src/**/*.ts'",
     "start": "bun run --filter @rel-ai/backend start",

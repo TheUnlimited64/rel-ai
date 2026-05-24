@@ -61,6 +61,23 @@ docker logs rel-ai 2>&1 | grep "Admin token"
 
 No other config — everything else is managed through the UI.
 
+## 🛠️ Development
+
+**Native (outside Docker):**
+
+```bash
+bun dev            # runs both backend (--watch) + frontend (Vite HMR)
+```
+
+**Docker with hot reload:**
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+```
+
+The Docker dev override mounts source directories and uses `bun --watch` for the backend.
+Vite HMR works in both modes. API proxy auto-detects Docker via `VITE_DOCKER` env var.
+
 ## 🏗️ Architecture
 
 ```
