@@ -19,7 +19,7 @@ test.describe("Full setup flow", () => {
       await page.locator('[role="dialog"] button', { hasText: /^create$/i }).click();
 
       // Dismiss API key dialog via "Done" button
-      await page.getByRole("button", { name: /^done$/i }).click({ timeout: 10000 });
+      await page.getByRole("dialog").getByRole("button", { name: /^done$/i }).click({ timeout: 10000 });
     });
 
     // --- Step 2: Create a real model ---
@@ -98,8 +98,8 @@ test.describe("Full setup flow", () => {
       await page.locator('[role="dialog"] button', { hasText: /^create$/i }).click();
 
       // Wait for token reveal dialog to appear, then close via "Done"
-      await expect(page.getByText("Endpoint Created")).toBeVisible({ timeout: 10000 });
-      await page.getByRole("button", { name: /^done$/i }).click({ timeout: 10000 });
+      await expect(page.getByRole("heading", { name: "Endpoint Created" })).toBeVisible({ timeout: 10000 });
+      await page.getByRole("dialog").getByRole("button", { name: /^done$/i }).click({ timeout: 10000 });
     });
 
     // --- Step 6: Test model resolution ---
