@@ -18,13 +18,14 @@ test.describe("Proxy endpoint", () => {
         providerModel: "gpt-4",
       },
     });
+    let resolvedModelId = modelId;
     const modelResult = await createModelResp.json();
     if (!modelResult.result?.data) {
       // Model creation failed (maybe ID collision), try with another
-      const altId = `pm${Math.random().toString(36).slice(2, 6)}`;
+      resolvedModelId = `pm${Math.random().toString(36).slice(2, 6)}`;
       await request.post("http://localhost:3999/api/trpc/models.createReal", {
         headers,
-        data: { id: altId, providerId: "e2e-test-provider", providerModel: "gpt-4" },
+        data: { id: resolvedModelId, providerId: "e2e-test-provider", providerModel: "gpt-4" },
       });
     }
 
@@ -35,7 +36,7 @@ test.describe("Proxy endpoint", () => {
       data: {
         name: "Proxy Test EP",
         path: epPath,
-        modelIds: [modelId],
+        modelIds: [resolvedModelId],
       },
     });
     const createResult = await createResp.json();
@@ -51,7 +52,7 @@ test.describe("Proxy endpoint", () => {
         "Content-Type": "application/json",
       },
       data: {
-        model: modelId,
+        model: resolvedModelId,
         messages: [{ role: "user", content: "Hello" }],
         stream: true,
       },

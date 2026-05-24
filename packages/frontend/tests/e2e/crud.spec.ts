@@ -7,7 +7,7 @@ test.describe("CRUD smoke tests", () => {
   test.describe("Providers", () => {
     test("list page renders", async ({ page }) => {
       await page.goto("/providers");
-      await expect(page.locator("h1")).toBeVisible();
+      await expect(page.getByRole("heading", { name: /providers/i })).toBeVisible();
     });
 
     test("create, view, edit, and delete provider", async ({ page }) => {
@@ -58,7 +58,7 @@ test.describe("CRUD smoke tests", () => {
   test.describe("Models", () => {
     test("list page renders", async ({ page }) => {
       await page.goto("/models");
-      await expect(page.locator("h1")).toBeVisible();
+      await expect(page.getByRole("heading", { name: /models/i })).toBeVisible();
     });
 
     test("create real model, view detail, and delete", async ({ page }) => {
@@ -98,7 +98,7 @@ test.describe("CRUD smoke tests", () => {
   test.describe("Endpoints", () => {
     test("list page renders", async ({ page }) => {
       await page.goto("/endpoints");
-      await expect(page.locator("h1")).toBeVisible();
+      await expect(page.getByRole("heading", { name: /endpoints/i })).toBeVisible();
     });
 
     test("create endpoint and view detail", async ({ page }) => {

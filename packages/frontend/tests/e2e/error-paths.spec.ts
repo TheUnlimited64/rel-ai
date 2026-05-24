@@ -16,17 +16,12 @@ test.describe("Negative path tests", () => {
   });
 
   test("login with invalid token shows error", async ({ page }) => {
-    await page.goto("/");
-    // Fill in a bad token and submit
-    const tokenInput = page.locator('input[type="password"], input[name="token"], input[placeholder*="token" i]');
-    if (await tokenInput.count() > 0) {
-      await tokenInput.first().fill("invalid-token-xxx");
-      const submitBtn = page.getByRole("button", { name: /login|submit|sign in/i });
-      if (await submitBtn.count() > 0) {
-        await submitBtn.first().click();
-        // Expect error feedback
-        await expect(page.locator("text=/invalid|unauthorized|error|failed/i")).toBeVisible({ timeout: 5000 });
-      }
-    }
+    await page.goto("/login", { waitUntil: "domcontentloaded" });
+    await page.evaluate(() => localStorage.removeItem("rel_ai_token"));
+    await page.reload();
+
+    await page.locator('input[type="password"]').fill("invalid-token-xxx", { timeout: 5000 });
+    await page.getByRole("button", { name: /sign in/i }).click();
+    await expect(page.locator("text=/invalid|unauthorized|error|failed/i")).toBeVisible({ timeout: 5000 });
   });
 });

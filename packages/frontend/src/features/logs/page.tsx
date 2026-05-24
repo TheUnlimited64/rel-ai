@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { QueryError } from "@/components/QueryError";
@@ -27,9 +27,11 @@ export function LogsPage() {
   const [clearError, setClearError] = useState<string | null>(null);
   const [showClearDialog, setShowClearDialog] = useState(false);
 
-  const from = presetToDate(datePreset);
-  const status = statusFilter === "all" ? undefined : STATUS_VALUES.find(v => v === statusFilter);
-  const filters = { status, endpointId: endpointId === "all" ? undefined : endpointId, providerId: providerId === "all" ? undefined : providerId, from };
+  const filters = useMemo(() => {
+    const from = presetToDate(datePreset);
+    const status = statusFilter === "all" ? undefined : STATUS_VALUES.find(v => v === statusFilter);
+    return { status, endpointId: endpointId === "all" ? undefined : endpointId, providerId: providerId === "all" ? undefined : providerId, from };
+  }, [datePreset, statusFilter, endpointId, providerId]);
 
   const logsQuery = trpcHooks.logs.list.useQuery(
     { ...filters, limit: PAGE_SIZE, offset },

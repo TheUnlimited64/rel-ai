@@ -10,6 +10,10 @@ export default defineConfig({
       "@": path.resolve(__dirname, "src"),
     },
   },
+  build: {
+    outDir: path.resolve(__dirname, "../backend/public"),
+    emptyOutDir: true,
+  },
   server: {
     port: 5173,
     proxy: {

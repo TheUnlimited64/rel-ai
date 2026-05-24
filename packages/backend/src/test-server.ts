@@ -6,7 +6,7 @@
 import { startServer } from "./server.js";
 import { seedTestToken } from "./test-seed.js";
 import { resetEncryptionKey, encrypt } from "./core/auth/encryption.js";
-import { providers } from "./db/schema/index.js";
+import { providers, requestLogs } from "./db/schema/index.js";
 import { Hono } from "hono";
 
 const TEST_PORT = 3999;
@@ -68,6 +68,27 @@ db.insert(providers)
   .onConflictDoNothing()
   .run();
 console.log(`[e2e] Seeded test provider`);
+
+// --- Seed log entries for logs dashboard tests ---
+const logEntries = [
+  { requestedModel: "gpt-4", providerId: "e2e-test-provider", latencyMs: 120, status: "success" as const, promptTokens: 50, completionTokens: 100 },
+  { requestedModel: "gpt-4", providerId: "e2e-test-provider", latencyMs: 350, status: "success" as const, promptTokens: 200, completionTokens: 400 },
+  { requestedModel: "claude-3", providerId: "e2e-test-provider", latencyMs: 800, status: "error" as const, errorDetail: "Rate limit exceeded" },
+];
+for (const entry of logEntries) {
+  db.insert(requestLogs).values({
+    id: crypto.randomUUID(),
+    requestedModel: entry.requestedModel,
+    providerId: entry.providerId,
+    latencyMs: entry.latencyMs,
+    status: entry.status,
+    promptTokens: entry.promptTokens,
+    completionTokens: entry.completionTokens,
+    errorDetail: entry.errorDetail ?? null,
+    createdAt: new Date().toISOString(),
+  }).run();
+}
+console.log(`[e2e] Seeded ${logEntries.length} log entries`);
 
 // --- Graceful shutdown ---
 process.on("SIGINT", () => {
