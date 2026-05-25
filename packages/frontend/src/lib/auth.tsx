@@ -3,10 +3,11 @@ import {
   useContext,
   useState,
   useCallback,
-  useEffect,
   type ReactNode,
 } from "react";
-import { useNavigate } from "react-router-dom";
+import { Navigate } from "react-router-dom";
+
+import { resetRedirectLock } from "@/lib/trpc";
 
 const TOKEN_KEY = "rel_ai_token";
 
@@ -27,6 +28,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback((newToken: string) => {
     localStorage.setItem(TOKEN_KEY, newToken);
     setToken(newToken);
+    resetRedirectLock();
   }, []);
 
   const logout = useCallback(() => {
@@ -53,32 +55,18 @@ export function useAuth(): AuthContextValue {
 
 export function RequireAuth({ children }: { children: ReactNode }) {
   const { isAuthenticated } = useAuth();
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    if (!isAuthenticated) {
-      navigate("/login", { replace: true });
-    }
-  }, [isAuthenticated, navigate]);
 
   if (!isAuthenticated) {
-    return <div style={{ textAlign: "center", padding: "2rem" }}>Loading...</div>;
+    return <Navigate to="/login" replace />;
   }
   return <>{children}</>;
 }
 
 export function RedirectIfAuth({ children }: { children: ReactNode }) {
   const { isAuthenticated } = useAuth();
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    if (isAuthenticated) {
-      navigate("/providers", { replace: true });
-    }
-  }, [isAuthenticated, navigate]);
 
   if (isAuthenticated) {
-    return <div style={{ textAlign: "center", padding: "2rem" }}>Loading...</div>;
+    return <Navigate to="/providers" replace />;
   }
   return <>{children}</>;
 }
