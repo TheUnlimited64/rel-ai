@@ -56,19 +56,19 @@ describe("Providers CRUD", () => {
     expect(created.name).toBe("Test Provider");
     expect(created.adapterType).toBe("openai");
     expect(created.baseUrl).toBe("https://api.openai.com");
-    expect(created.apiKey).toBe("sk-****");
+    expect(created.maskedApiKey).toBe("sk-****");
     expect(created.enabled).toBe(true);
 
     // List
     const list = await caller.providers.list();
     expect(list.length).toBe(1);
     expect(list[0]!.id).toBe(created.id);
-    expect(list[0]!.apiKey).toBe("sk-****");
+    expect(list[0]!.maskedApiKey).toBe("sk-****");
 
     // Get
     const got = await caller.providers.get({ id: created.id });
     expect(got.name).toBe("Test Provider");
-    expect(got.apiKey).toBe("sk-****");
+    expect(got.maskedApiKey).toBe("sk-****");
 
     // Update
     const updated = await caller.providers.update({
@@ -78,7 +78,7 @@ describe("Providers CRUD", () => {
     });
     expect(updated.name).toBe("Updated Provider");
     expect(updated.enabled).toBe(false);
-    expect(updated.apiKey).toBe("sk-****"); // key unchanged
+    expect(updated.maskedApiKey).toBe("sk-****"); // key unchanged
 
     // Delete
     const deleted = await caller.providers.delete({ id: created.id });
@@ -135,7 +135,7 @@ describe("Providers CRUD", () => {
     });
 
     // Masked key shows first 3 chars
-    expect(created.apiKey).toBe("sk-****");
+    expect(created.maskedApiKey).toBe("sk-****");
 
     // Verify stored value in DB is NOT the plaintext key
     const row = db.select().from(providers).get()!;
@@ -163,7 +163,7 @@ describe("Providers CRUD", () => {
       apiKey: "sk-new-key-67890",
     });
 
-    expect(updated.apiKey).toBe("sk-****");
+    expect(updated.maskedApiKey).toBe("sk-****");
 
     const newEncryptedKey = db.select().from(providers).get()!.apiKey;
     expect(newEncryptedKey).not.toBe("sk-new-key-67890");
@@ -278,7 +278,7 @@ describe("Providers CRUD", () => {
     });
 
     expect(updated.name).toBe("Key Preserve Updated");
-    expect(updated.apiKey).toBe("sk-****");
+    expect(updated.maskedApiKey).toBe("sk-****");
 
     // Verify encrypted value unchanged in DB
     const updatedRow = db.select().from(providers).where(eq(providers.id, created.id)).get()!;

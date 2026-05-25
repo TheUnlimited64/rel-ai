@@ -11,7 +11,7 @@ export interface ProviderResponse {
   name: string;
   adapterType: string;
   baseUrl: string;
-  apiKey: string; // masked
+  maskedApiKey: string;
   enabled: boolean;
   config: string | null;
   createdAt: string;
@@ -28,7 +28,7 @@ function toResponse(row: ProviderRow, maskedKey: string): ProviderResponse {
     name: row.name,
     adapterType: row.adapterType,
     baseUrl: row.baseUrl,
-    apiKey: maskedKey,
+    maskedApiKey: maskedKey,
     enabled: row.enabled,
     config: row.config,
     createdAt: row.createdAt,

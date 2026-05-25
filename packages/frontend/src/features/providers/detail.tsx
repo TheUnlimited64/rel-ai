@@ -6,8 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { trpcReact as trpcHooks } from "@/lib/trpc";
-import { maskApiKey } from "./api";
-import type { ProviderResponse } from "./api";
+import { parseProviderResponse, maskApiKey } from "./api";
 import { ProviderEditForm } from "./components/ProviderEditForm";
 import { ProviderConnectionTest } from "./components/ProviderConnectionTest";
 import { ProviderRegenerateKey } from "./components/ProviderRegenerateKey";
@@ -22,7 +21,7 @@ export function ProviderDetailPage() {
 
   const query = trpcHooks.providers.get.useQuery({ id: id! }, { enabled: !!id });
   const utils = trpcHooks.useUtils();
-  const provider = query.data as ProviderResponse | undefined;
+  const provider = query.data ? parseProviderResponse(query.data) : undefined;
   const loading = query.isLoading;
 
   const updateMutation = trpcHooks.providers.update.useMutation({

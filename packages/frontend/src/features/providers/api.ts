@@ -1,25 +1,46 @@
-import type { AdapterType } from "@rel-ai/shared";
-import { AdapterTypeSchema } from "@rel-ai/shared";
+import { z } from "zod";
+import { AdapterTypeSchema, type AdapterType } from "@rel-ai/shared";
 
 export type { AdapterType };
-
 export const ADAPTER_TYPES = AdapterTypeSchema.options;
 
-export type ProviderResponse = {
-  id: string;
-  name: string;
-  adapterType: AdapterType;
-  baseUrl: string;
-  apiKey: string;
-  enabled: boolean;
-  config: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
+export const ProviderResponseSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  adapterType: AdapterTypeSchema,
+  baseUrl: z.string(),
+  apiKey: z.string(),
+  enabled: z.boolean(),
+  config: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
 
-export type CreateProviderResponse = ProviderResponse & {
-  apiKeyRaw: string;
-};
+export type ProviderResponse = z.infer<typeof ProviderResponseSchema>;
+
+export const CreateProviderResponseSchema = ProviderResponseSchema.extend({
+  apiKeyRaw: z.string(),
+});
+
+export type CreateProviderResponse = z.infer<typeof CreateProviderResponseSchema>;
+
+export function parseProviderResponse(data: unknown): ProviderResponse {
+  return ProviderResponseSchema.parse(data);
+}
+
+export function parseProviderResponseArray(data: unknown): ProviderResponse[] {
+  return z.array(ProviderResponseSchema).parse(data);
+}
+
+/** Returns null when result lacks apiKeyRaw or shape is invalid. */
+export function extractApiKeyRaw(result: unknown): string | null {
+  const parsed = CreateProviderResponseSchema.safeParse(result);
+  return parsed.success ? parsed.data.apiKeyRaw : null;
+}
+
+export function isAdapterType(value: string): value is AdapterType {
+  return (ADAPTER_TYPES as readonly string[]).includes(value);
+}
 
 export function maskApiKey(key: string): string {
   if (!key || key.length <= 7) return "****";
