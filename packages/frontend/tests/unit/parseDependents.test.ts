@@ -58,4 +58,17 @@ describe("parseDependents", () => {
     };
     expect(parseDependents(err)).toEqual(["gpt-4-turbo", "claude-3-opus"]);
   });
+
+  it("ignores legacy string-encoded format in message", () => {
+    const err = new Error("HAS_DEPENDENTS:model-a,model-b");
+    expect(parseDependents(err)).toBeNull();
+  });
+
+  it("handles tRPC error shape with code in data", () => {
+    const err = {
+      message: "HAS_DEPENDENTS",
+      data: { code: "PRECONDITION_FAILED", dependents: ["model-x"] },
+    };
+    expect(parseDependents(err)).toEqual(["model-x"]);
+  });
 });

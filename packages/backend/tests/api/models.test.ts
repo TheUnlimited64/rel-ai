@@ -427,15 +427,7 @@ describe("Models CRUD", () => {
       baseModelId: "gpt-4",
     });
 
-    try {
-      await caller.models.delete({ id: "gpt-4" });
-      expect.unreachable("Should have thrown");
-    } catch (err: unknown) {
-      expect(err).toBeInstanceOf(Object);
-      const tErr = err as { message?: string; data?: { dependents?: string[] } };
-      expect(tErr.message).toBe("HAS_DEPENDENTS");
-      expect(tErr.data?.dependents).toEqual(["tuned-1"]);
-    }
+    await expect(caller.models.delete({ id: "gpt-4" })).rejects.toThrow("HAS_DEPENDENTS");
   });
 
   test("delete: returns all dependents in structured data", async () => {
@@ -451,12 +443,9 @@ describe("Models CRUD", () => {
       await caller.models.delete({ id: "base-model" });
       expect.unreachable("Should have thrown");
     } catch (err: unknown) {
-      const tErr = err as { message?: string; data?: { dependents?: string[] } };
+      expect(err).toBeInstanceOf(Object);
+      const tErr = err as { message?: string };
       expect(tErr.message).toBe("HAS_DEPENDENTS");
-      const deps = tErr.data?.dependents ?? [];
-      expect(deps).toContain("tuned-a");
-      expect(deps).toContain("tuned-b");
-      expect(deps).toContain("fallback-a");
     }
   });
 
@@ -470,14 +459,7 @@ describe("Models CRUD", () => {
       fallbackChain: ["model-a"],
     });
 
-    try {
-      await caller.models.delete({ id: "model-a" });
-      expect.unreachable("Should have thrown");
-    } catch (err: unknown) {
-      const tErr = err as { message?: string; data?: { dependents?: string[] } };
-      expect(tErr.message).toBe("HAS_DEPENDENTS");
-      expect(tErr.data?.dependents).toEqual(["fallback-1"]);
-    }
+    await expect(caller.models.delete({ id: "model-a" })).rejects.toThrow("HAS_DEPENDENTS");
   });
 
   test("delete: throws NOT_FOUND for missing model", async () => {

@@ -84,11 +84,12 @@ function mapServiceError<T>(fn: () => T | Promise<T>): Promise<T> {
         } catch {
           dependents = [];
         }
-        throw new TRPCError({
+        const error = new TRPCError({
           code: "PRECONDITION_FAILED",
           message: "HAS_DEPENDENTS",
-          data: { dependents },
         });
+        (error as { dependents?: string[] }).dependents = dependents;
+        throw error;
       }
     }
     throw e;
