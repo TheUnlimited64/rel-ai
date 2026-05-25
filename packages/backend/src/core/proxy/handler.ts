@@ -277,6 +277,9 @@ export class ProxyHandler {
     endpointId: string | undefined,
     abortController?: AbortController,
   ): ProxyResult {
+    if ("resetStreamState" in adapter && typeof adapter.resetStreamState === "function") {
+      adapter.resetStreamState();
+    }
     const body = response.body;
     if (!body) {
       const correlationId = generateCorrelationId();
@@ -323,12 +326,12 @@ export class ProxyHandler {
               buffer += decoder.decode(value, { stream: true });
               const delimiter = adapter.streamDelimiter ?? "\n\n";
               const parts = buffer.split(delimiter);
-              // Keep last incomplete part in buffer
               buffer = parts.pop() ?? "";
 
               for (const part of parts) {
                 if (!part.trim()) continue;
                 const parsed = adapter.parseSSEChunk(part);
+
                 if (!parsed) continue;
 
                 if (parsed.usage) {

@@ -1,4 +1,4 @@
-import type { Message, ParsedChunk, ProviderError, TokenUsage, ContentPart } from "../../core/provider/types.js";
+import type { Message, ParsedChunk, ProviderError, TokenUsage, ContentPart, ToolCallDelta } from "../../core/provider/types.js";
 import type { ProviderAdapter, TestConnectionResult } from "../../core/provider/adapter.js";
 
 function contentToString(content: string | ContentPart[] | null): string {
@@ -25,24 +25,35 @@ function convertTools(tools?: OpenAITool[]): unknown[] {
   }));
 }
 
+function mapFinishReason(ccReason: string | undefined): string | undefined {
+  if (!ccReason) return undefined;
+  if (ccReason === "tool-calls") return "tool_calls";
+  return ccReason;
+}
+
+type ActiveToolCall = {
+  index: number;
+  id: string;
+  name: string;
+};
+
 export class CommandCodeAdapter implements ProviderAdapter {
   readonly type = "commandcode";
   readonly streamDelimiter = "\n";
+
+  private toolCallIndex = 0;
+  private activeToolCalls = new Map<string, ActiveToolCall>();
 
   constructor(
     private defaultApiKey?: string,
     private defaultBaseUrl?: string,
   ) {}
 
-  /**
-   * Convert OpenAI messages to CommandCode format.
-   * - system/developer → extracted to `system` string
-   * - user → `{ role: "user", content }` (content as-is)
-   * - assistant → `{ role: "assistant", content: [{type:"text",...},{type:"tool-call",...}] }`
-   * - tool → `{ role: "tool", content: [{type:"tool-result",...}] }`
-   *
-   * Based on OmniRoute's convertMessages() in open-sse/executors/commandCode.ts
-   */
+  resetStreamState(): void {
+    this.toolCallIndex = 0;
+    this.activeToolCalls.clear();
+  }
+
   private convertMessages(messages: Message[]): { system: string; messages: unknown[] } {
     const callIds = new Set<string>();
     const resultIds = new Set<string>();
@@ -142,20 +153,12 @@ export class CommandCodeAdapter implements ProviderAdapter {
 
     const overrides = params.overrides ?? ({} as Record<string, unknown>);
 
-    // Extract known params from overrides — DO NOT spread restOverrides
-    // CC silently rejects requests with unknown params (returns 200 + {success:false})
     const rawTools = overrides.tools as OpenAITool[] | undefined;
     const temperature = overrides.temperature as number | undefined;
     const stop = overrides.stop as string | string[] | undefined;
 
-    // Convert OpenAI tools format to CommandCode format
-    // OpenAI: { type: "function", function: { name, description, parameters } }
-    // CC:     { type: "function", name, description, input_schema }
     const tools = convertTools(rawTools);
 
-    // CRITICAL: /alpha/generate requires stream:true — returns 400 for stream:false
-    // CRITICAL: Only send CC-recognized params. Unknown keys cause silent rejection.
-    // NOTE: Do NOT send tool_choice — CC doesn't support it (OmniRoute/patlux omit it)
     const body: Record<string, unknown> = {
       config: {
         workingDir: "/workspace",
@@ -203,11 +206,11 @@ export class CommandCodeAdapter implements ProviderAdapter {
   }
 
   parseSSEChunk(chunk: string): ParsedChunk | null {
-    // LDJSON format: bare JSON lines (NOT SSE with data: prefix)
-    // Also handle data:-prefixed lines as fallback
     const lines = chunk.split("\n");
     let content: string | undefined;
     let thinking: string | undefined;
+    const toolCallDeltas: ToolCallDelta[] = [];
+    let finishReason: string | undefined;
     let done = false;
     let usage: TokenUsage | undefined;
 
@@ -227,7 +230,6 @@ export class CommandCodeAdapter implements ProviderAdapter {
         continue;
       }
 
-      // CC can return {success:false, error:{...}} as a 200 response chunk
       if (parsed.success === false) {
         const errObj = parsed.error as Record<string, unknown> | undefined;
         const errMsg = errObj?.message ?? String(parsed.error) ?? "CC request rejected";
@@ -238,46 +240,139 @@ export class CommandCodeAdapter implements ProviderAdapter {
         case "text-delta":
           content = (content ?? "") + ((parsed.text as string) ?? "");
           break;
+
+        case "text-start":
+        case "text-end":
+          break;
+
         case "reasoning-delta":
           thinking = (thinking ?? "") + ((parsed.text as string) ?? "");
           break;
+
+        case "reasoning-start":
+        case "reasoning-end":
+          break;
+
+        case "tool-input-start": {
+          const callId = parsed.id as string;
+          const toolName = parsed.toolName as string;
+          const idx = this.toolCallIndex++;
+          this.activeToolCalls.set(callId, { index: idx, id: callId, name: toolName });
+          toolCallDeltas.push({
+            index: idx,
+            id: callId,
+            type: "function",
+            function: { name: toolName },
+          });
+          break;
+        }
+
+        case "tool-input-delta": {
+          const callId = parsed.id as string;
+          const delta = parsed.delta as string;
+          const active = this.activeToolCalls.get(callId);
+          if (active) {
+            toolCallDeltas.push({
+              index: active.index,
+              function: { arguments: delta },
+            });
+          }
+          break;
+        }
+
+        case "tool-input-end":
+          break;
+
+        case "tool-call": {
+          const toolCallId = parsed.toolCallId as string;
+          const toolName = parsed.toolName as string;
+          const input = parsed.input as Record<string, unknown> | undefined;
+          let existing = this.activeToolCalls.get(toolCallId);
+          if (!existing) {
+            const idx = this.toolCallIndex++;
+            existing = { index: idx, id: toolCallId, name: toolName };
+            this.activeToolCalls.set(toolCallId, existing);
+          }
+          toolCallDeltas.push({
+            index: existing.index,
+            id: toolCallId,
+            type: "function",
+            function: {
+              name: toolName,
+              arguments: input ? JSON.stringify(input) : "{}",
+            },
+          });
+          break;
+        }
+
+        case "start":
+        case "start-step":
+          break;
+
+        case "finish-step": {
+          const rawReason = parsed.finishReason as string | undefined;
+          if (rawReason) {
+            finishReason = mapFinishReason(rawReason);
+          }
+          const stepUsage = this.parseCroppedUsage(parsed.usage as Record<string, unknown> | undefined);
+          if (stepUsage) {
+            usage = stepUsage;
+          }
+          break;
+        }
+
         case "finish": {
           done = true;
-          const tu = parsed.totalUsage as Record<string, unknown> | undefined;
-          if (tu) {
+          const rawReason = parsed.finishReason as string | undefined;
+          if (rawReason) {
+            finishReason = mapFinishReason(rawReason);
+          }
+          const totalUsage = parsed.totalUsage as Record<string, unknown> | undefined;
+          if (totalUsage) {
             usage = {
-              promptTokens: (tu.inputTokens as number) ?? 0,
-              completionTokens: (tu.outputTokens as number) ?? 0,
+              promptTokens: (totalUsage.inputTokens as number) ?? 0,
+              completionTokens: (totalUsage.outputTokens as number) ?? 0,
             };
           }
           break;
         }
+
+        case "provider-metadata":
+          break;
+
         case "error": {
           const errObj = parsed.error as Record<string, unknown> | undefined;
           const errMsg = errObj?.message ?? String(parsed.error) ?? "Stream error";
           throw new Error(typeof errMsg === "string" ? errMsg : "Stream error");
         }
+
         default:
           break;
       }
     }
 
-    if (content === undefined && thinking === undefined && !done && usage === undefined) {
+    const hasToolCalls = toolCallDeltas.length > 0;
+
+    if (content === undefined && thinking === undefined && !hasToolCalls && !done && usage === undefined && finishReason === undefined) {
       return null;
     }
 
-    const result = {
-      ...(content !== undefined ? { content: content.slice(0, 100) } : {}),
-      ...(thinking !== undefined ? { thinking: thinking.slice(0, 100) } : {}),
-      done,
-      ...(usage !== undefined ? { usage } : {}),
-    };
     return {
       ...(content !== undefined ? { content } : {}),
       ...(thinking !== undefined ? { thinking } : {}),
+      ...(hasToolCalls ? { tool_calls: toolCallDeltas } : {}),
+      ...(finishReason !== undefined ? { finish_reason: finishReason } : {}),
       done,
       ...(usage !== undefined ? { usage } : {}),
     };
+  }
+
+  private parseCroppedUsage(u: Record<string, unknown> | undefined): TokenUsage | undefined {
+    if (!u) return undefined;
+    const input = (u.inputTokens as number) ?? 0;
+    const output = (u.outputTokens as number) ?? 0;
+    if (input === 0 && output === 0) return undefined;
+    return { promptTokens: input, completionTokens: output };
   }
 
   async parseError(response: Response): Promise<ProviderError> {
@@ -295,13 +390,12 @@ export class CommandCodeAdapter implements ProviderAdapter {
           message = body.error.message ?? message;
         }
       } catch {
-        // Response isn't JSON — use raw text (truncated) as the error message
         if (text.trim()) {
           message = text.trim().slice(0, 500);
         }
       }
     } catch {
-      // Can't read body at all — use defaults
+      // Can't read body at all
     }
 
     const status = response.status;
@@ -325,7 +419,7 @@ export class CommandCodeAdapter implements ProviderAdapter {
           Authorization: `Bearer ${apiKey}`,
           "Content-Type": "application/json",
           "x-command-code-version": "0.24.1",
-        "x-cli-environment": "external",
+          "x-cli-environment": "external",
           "x-project-slug": "llmpack",
           "x-taste-learning": "false",
           "x-co-flag": "false",
@@ -335,7 +429,7 @@ export class CommandCodeAdapter implements ProviderAdapter {
           config: { workingDir: "/workspace", date: new Date().toISOString().split("T")[0], environment: "external", structure: [], isGitRepo: false, currentBranch: "", mainBranch: "", gitStatus: "", recentCommits: [] },
           memory: "",
           taste: "",
-      skills: "",
+          skills: "",
           permissionMode: "standard",
           params: { model: "deepseek/deepseek-v4-flash", messages: [{ role: "user", content: "hi" }], tools: [], system: "", max_tokens: 1, stream: true },
         }),
