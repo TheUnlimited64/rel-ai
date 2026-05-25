@@ -209,6 +209,7 @@ describe("CommandCodeAdapter", () => {
       }) + "\n";
       const result = adapter.parseSSEChunk(chunk);
       expect(result).toEqual({
+        finish_reason: "stop",
         done: true,
         usage: { promptTokens: 100, completionTokens: 50 },
       });
@@ -217,7 +218,7 @@ describe("CommandCodeAdapter", () => {
     test("parses finish event without usage", () => {
       const chunk = JSON.stringify({ type: "finish", finishReason: "stop" }) + "\n";
       const result = adapter.parseSSEChunk(chunk);
-      expect(result).toEqual({ done: true });
+      expect(result).toEqual({ finish_reason: "stop", done: true });
     });
 
     test("throws on error event", () => {
@@ -266,9 +267,22 @@ describe("CommandCodeAdapter", () => {
       expect(adapter.parseSSEChunk(chunk)).toBeNull();
     });
 
-    test("returns null for finish-step event", () => {
+    test("parses finish-step with reason and usage", () => {
+      const fresh = new CommandCodeAdapter();
+      const chunk = JSON.stringify({ type: "finish-step", finishReason: "tool-calls", usage: { inputTokens: 50, outputTokens: 25 } }) + "\n";
+      const result = fresh.parseSSEChunk(chunk);
+      expect(result).toEqual({
+        finish_reason: "tool_calls",
+        usage: { promptTokens: 50, completionTokens: 25 },
+        done: false,
+      });
+    });
+
+    test("parses finish-step with stop reason", () => {
+      const fresh = new CommandCodeAdapter();
       const chunk = JSON.stringify({ type: "finish-step", finishReason: "stop" }) + "\n";
-      expect(adapter.parseSSEChunk(chunk)).toBeNull();
+      const result = fresh.parseSSEChunk(chunk);
+      expect(result).toEqual({ finish_reason: "stop", done: false });
     });
 
     test("returns null for provider-metadata event", () => {
@@ -276,9 +290,14 @@ describe("CommandCodeAdapter", () => {
       expect(adapter.parseSSEChunk(chunk)).toBeNull();
     });
 
-    test("returns null for tool-call event", () => {
-      const chunk = JSON.stringify({ type: "tool-call", toolCallId: "tc1" }) + "\n";
-      expect(adapter.parseSSEChunk(chunk)).toBeNull();
+    test("parses tool-call event (non-streaming)", () => {
+      const fresh = new CommandCodeAdapter();
+      const chunk = JSON.stringify({ type: "tool-call", toolCallId: "tc1", toolName: "search", input: { q: "test" } }) + "\n";
+      const result = fresh.parseSSEChunk(chunk);
+      expect(result).toEqual({
+        tool_calls: [{ index: 0, id: "tc1", type: "function", function: { name: "search", arguments: "{\"q\":\"test\"}" } }],
+        done: false,
+      });
     });
 
     test("returns null for empty lines", () => {
@@ -524,6 +543,123 @@ describe("CommandCodeAdapter", () => {
     test("throws on success:false with string error", () => {
       const chunk = JSON.stringify({ success: false, error: "Bad request" }) + "\n";
       expect(() => adapter.parseSSEChunk(chunk)).toThrow("Bad request");
+    });
+  });
+
+  describe("tool-call streaming (tool-input-start/delta/end)", () => {
+    test("tool-input-start emits ToolCallDelta with id and name", () => {
+      const fresh = new CommandCodeAdapter();
+      const chunk = JSON.stringify({ type: "tool-input-start", id: "call_abc", toolName: "search" }) + "\n";
+      const result = fresh.parseSSEChunk(chunk);
+      expect(result).toEqual({
+        tool_calls: [{ index: 0, id: "call_abc", type: "function", function: { name: "search" } }],
+        done: false,
+      });
+    });
+
+    test("tool-input-delta appends arguments to active tool call", () => {
+      const fresh = new CommandCodeAdapter();
+      const start = JSON.stringify({ type: "tool-input-start", id: "call_abc", toolName: "search" }) + "\n";
+      fresh.parseSSEChunk(start);
+      const delta = JSON.stringify({ type: "tool-input-delta", id: "call_abc", delta: "{\"q\":" }) + "\n";
+      const result = fresh.parseSSEChunk(delta);
+      expect(result).toEqual({
+        tool_calls: [{ index: 0, function: { arguments: "{\"q\":" } }],
+        done: false,
+      });
+    });
+
+    test("tool-input-end returns null (no delta)", () => {
+      const fresh = new CommandCodeAdapter();
+      const start = JSON.stringify({ type: "tool-input-start", id: "call_abc", toolName: "search" }) + "\n";
+      fresh.parseSSEChunk(start);
+      const end = JSON.stringify({ type: "tool-input-end", id: "call_abc" }) + "\n";
+      expect(fresh.parseSSEChunk(end)).toBeNull();
+    });
+
+    test("full tool-call streaming lifecycle", () => {
+      const fresh = new CommandCodeAdapter();
+      const start = JSON.stringify({ type: "tool-input-start", id: "call_1", toolName: "task" }) + "\n";
+      const delta1 = JSON.stringify({ type: "tool-input-delta", id: "call_1", delta: "{\"subagent\":" }) + "\n";
+      const delta2 = JSON.stringify({ type: "tool-input-delta", id: "call_1", delta: "\"explore\"}" }) + "\n";
+      const end = JSON.stringify({ type: "tool-input-end", id: "call_1" }) + "\n";
+      const finish = JSON.stringify({ type: "finish-step", finishReason: "tool-calls" }) + "\n";
+
+      expect(fresh.parseSSEChunk(start)).toEqual({
+        tool_calls: [{ index: 0, id: "call_1", type: "function", function: { name: "task" } }],
+        done: false,
+      });
+      expect(fresh.parseSSEChunk(delta1)).toEqual({
+        tool_calls: [{ index: 0, function: { arguments: "{\"subagent\":" } }],
+        done: false,
+      });
+      expect(fresh.parseSSEChunk(delta2)).toEqual({
+        tool_calls: [{ index: 0, function: { arguments: "\"explore\"}" } }],
+        done: false,
+      });
+      expect(fresh.parseSSEChunk(end)).toBeNull();
+      expect(fresh.parseSSEChunk(finish)).toEqual({
+        finish_reason: "tool_calls",
+        done: false,
+      });
+    });
+
+    test("multiple concurrent tool calls get separate indices", () => {
+      const fresh = new CommandCodeAdapter();
+      const start1 = JSON.stringify({ type: "tool-input-start", id: "call_a", toolName: "search" }) + "\n";
+      const start2 = JSON.stringify({ type: "tool-input-start", id: "call_b", toolName: "read" }) + "\n";
+      const delta1 = JSON.stringify({ type: "tool-input-delta", id: "call_a", delta: "{\"q\":" }) + "\n";
+      const delta2 = JSON.stringify({ type: "tool-input-delta", id: "call_b", delta: "{\"path\":" }) + "\n";
+
+      expect(fresh.parseSSEChunk(start1)).toEqual({
+        tool_calls: [{ index: 0, id: "call_a", type: "function", function: { name: "search" } }],
+        done: false,
+      });
+      expect(fresh.parseSSEChunk(start2)).toEqual({
+        tool_calls: [{ index: 1, id: "call_b", type: "function", function: { name: "read" } }],
+        done: false,
+      });
+      expect(fresh.parseSSEChunk(delta1)).toEqual({
+        tool_calls: [{ index: 0, function: { arguments: "{\"q\":" } }],
+        done: false,
+      });
+      expect(fresh.parseSSEChunk(delta2)).toEqual({
+        tool_calls: [{ index: 1, function: { arguments: "{\"path\":" } }],
+        done: false,
+      });
+    });
+
+    test("tool-input-delta for unknown call ID is ignored", () => {
+      const fresh = new CommandCodeAdapter();
+      const delta = JSON.stringify({ type: "tool-input-delta", id: "unknown", delta: "data" }) + "\n";
+      expect(fresh.parseSSEChunk(delta)).toBeNull();
+    });
+
+    test("tool-call event after tool-input-start reuses same index", () => {
+      const fresh = new CommandCodeAdapter();
+      const start = JSON.stringify({ type: "tool-input-start", id: "call_x", toolName: "search" }) + "\n";
+      fresh.parseSSEChunk(start);
+      const tc = JSON.stringify({ type: "tool-call", toolCallId: "call_x", toolName: "search", input: { q: "hello" } }) + "\n";
+      const result = fresh.parseSSEChunk(tc);
+      expect(result).toEqual({
+        tool_calls: [{ index: 0, id: "call_x", type: "function", function: { name: "search", arguments: "{\"q\":\"hello\"}" } }],
+        done: false,
+      });
+    });
+  });
+
+  describe("resetStreamState", () => {
+    test("clears tool call tracking between streams", () => {
+      const fresh = new CommandCodeAdapter();
+      const start = JSON.stringify({ type: "tool-input-start", id: "call_1", toolName: "search" }) + "\n";
+      fresh.parseSSEChunk(start);
+      fresh.resetStreamState();
+      const start2 = JSON.stringify({ type: "tool-input-start", id: "call_2", toolName: "read" }) + "\n";
+      const result = fresh.parseSSEChunk(start2);
+      expect(result).toEqual({
+        tool_calls: [{ index: 0, id: "call_2", type: "function", function: { name: "read" } }],
+        done: false,
+      });
     });
   });
 });
