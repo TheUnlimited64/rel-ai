@@ -29,3 +29,20 @@
 - `createCaller()` doesn't go through error formatter → backend tests can't verify `data.dependents` via caller
 - Test added: frontend `parseDependents` unit test (12 cases) in `packages/frontend/tests/unit/`
 - Files changed: `service.ts`, `routers/models.ts`, `trpc.ts`, `useModels.ts`, `detail.tsx` (unchanged), new test file
+
+## T061 — extractBearerToken
+- Two auth parsing locations: `routes/proxy.ts` (strict `parts.length !== 2`) and `api/context.ts` (destructured `split(" ")`, silently accepted double-space)
+- Created `extractBearerToken()` in `core/auth/token.ts` using regex `^Bearer (\S+)$` — single-space only, rejects double-space patterns
+- Exported from `core/auth/index.ts` alongside existing auth functions
+- `\s+` in regex matches multiple spaces → use plain space ` ` for strict single-space matching
+- 2 pre-existing test failures (ProxyHandler client disconnect) unrelated to this change
+
+## T064 — Graceful shutdown for in-flight streams
+- Bun.serve() `server.stop()` drops all connections immediately — no drain
+- Fix: wrap `app.fetch` to track `activeConnections` counter (inc on request, dec on response settle)
+- `shuttingDown` flag returns 503 for new requests during shutdown
+- SIGTERM/SIGINT handlers → set flag, await drain loop (100ms poll, 10s timeout), then server.stop()
+- Exposed `triggerShutdown()`, `activeConnections`, `shuttingDown` on StartedServer for testability
+- Test: use random ports (30xxx range) to avoid EADDRINUSE; use `triggerShutdown()` instead of `process.kill()` to avoid killing test runner
+- Async fetch handling: check `result instanceof Promise` — sync responses decrement immediately, async use `.finally()`
+- 2 pre-existing handler test failures (abort signal propagation) — NOT caused by this change

@@ -38,6 +38,9 @@ export interface StartServerOptions {
 export interface StartedServer {
   url: string;
   stop: () => void;
+  triggerShutdown: (signal: string) => Promise<void>;
+  readonly activeConnections: number;
+  readonly shuttingDown: boolean;
   db: DbClient;
 }
 
@@ -186,11 +189,61 @@ export async function startServer(opts?: StartServerOptions): Promise<StartedSer
   }
 
   const app = createApp(db);
-  const server = Bun.serve({ fetch: app.fetch, port });
+
+  // Graceful shutdown state
+  let shuttingDown = false;
+  let activeConnections = 0;
+  const SHUTDOWN_TIMEOUT_MS = Number(process.env.SHUTDOWN_TIMEOUT_MS) || 10_000;
+
+  const wrappedFetch: typeof app.fetch = (req, env, ctx) => {
+    if (shuttingDown) {
+      return new Response(JSON.stringify({ error: "Server is shutting down" }), {
+        status: 503,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    activeConnections++;
+    const result = app.fetch(req, env, ctx);
+    // Handle both sync and async return values
+    if (result instanceof Promise) {
+      return result.finally(() => { activeConnections--; });
+    }
+    activeConnections--;
+    return result;
+  };
+
+  const server = Bun.serve({ fetch: wrappedFetch, port });
+
+  let shutdownStarted = false;
+  async function gracefulShutdown(signal: string) {
+    if (shutdownStarted) return;
+    shutdownStarted = true;
+    console.log(`\nReceived ${signal}, shutting down gracefully...`);
+
+    shuttingDown = true;
+
+    // Wait for active connections to drain
+    const deadline = Date.now() + SHUTDOWN_TIMEOUT_MS;
+    while (activeConnections > 0 && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    if (activeConnections > 0) {
+      console.warn(`Shutdown timeout reached with ${activeConnections} active connections remaining`);
+    }
+
+    server.stop();
+  }
+
+  process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+  process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 
   return {
     url: `http://localhost:${port}`,
     stop: () => server.stop(),
+    triggerShutdown: gracefulShutdown,
+    get activeConnections() { return activeConnections; },
+    get shuttingDown() { return shuttingDown; },
     db,
   };
 }
