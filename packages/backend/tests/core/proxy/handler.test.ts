@@ -2,7 +2,7 @@ import { describe, expect, test, mock, beforeEach } from "bun:test";
 import type { ProxyRequest, ProxyResult } from "../../../src/core/proxy/types.js";
 import type { ProviderAdapter } from "../../../src/core/provider/adapter.js";
 import type { ParsedChunk, ProviderError } from "../../../src/core/provider/types.js";
-import { ProxyHandler } from "../../../src/core/proxy/handler.js";
+import { ProxyHandler, mergeUsage } from "../../../src/core/proxy/handler.js";
 import { ModelResolver } from "../../../src/core/model/resolver.js";
 import { AdapterRegistry } from "../../../src/core/provider/registry.js";
 import { AnthropicAdapter } from "../../../src/adapters/anthropic/adapter.js";
@@ -455,6 +455,46 @@ describe("ProxyHandler", () => {
       expect(text).toContain("Hello");
       expect(text).toContain("world");
       // Should end with [DONE]
+      expect(text).toContain("[DONE]");
+    });
+
+    test("reused TextEncoder produces identical streaming output to per-chunk encoder", async () => {
+      const freshEncoder = new TextEncoder();
+      const moduleEncoder = new TextEncoder();
+
+      const samples = [
+        "Hello world",
+        "🚀 unicode ✓",
+        "",
+        "multi\nline\r\nwith\ttabs",
+      ];
+
+      for (const sample of samples) {
+        expect(moduleEncoder.encode(sample)).toEqual(freshEncoder.encode(sample));
+      }
+
+      const fetchFn = createMockFetch([
+        openAIStreamChunks([
+          { content: "chunk1" },
+          { content: " chunk2" },
+          { done: true },
+        ]),
+      ]);
+      const handler = buildHandler([realModelOpenAI], [providerOpenAI], fetchFn);
+
+      const result = await handler.handle({
+        model: "gpt-4",
+        messages: [{ role: "user", content: "Hi" }],
+        stream: true,
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      const chunks = await collectStreamChunks(result.body as ReadableStream<Uint8Array>);
+      const text = chunks.join("");
+      expect(text).toContain("chunk1");
+      expect(text).toContain("chunk2");
       expect(text).toContain("[DONE]");
     });
 
@@ -996,3 +1036,38 @@ function rateLimitResponse(): Response {
     { status: 429, headers: { "Content-Type": "application/json" } },
   );
 }
+
+// --- mergeUsage unit tests ---
+
+describe("mergeUsage", () => {
+  test("returns incoming when existing is undefined", () => {
+    const result = mergeUsage(undefined, { promptTokens: 10, completionTokens: 20 });
+    expect(result).toEqual({ promptTokens: 10, completionTokens: 20 });
+  });
+
+  test("sums promptTokens and completionTokens from two usage objects", () => {
+    const result = mergeUsage(
+      { promptTokens: 15, completionTokens: 30 },
+      { promptTokens: 10, completionTokens: 25 },
+    );
+    expect(result).toEqual({ promptTokens: 25, completionTokens: 55 });
+  });
+
+  test("merges three usage objects — total = prompt + completion", () => {
+    let total = mergeUsage(undefined, { promptTokens: 5, completionTokens: 10 });
+    total = mergeUsage(total, { promptTokens: 0, completionTokens: 15 });
+    total = mergeUsage(total, { promptTokens: 0, completionTokens: 20 });
+    // Simulates Anthropic streaming: prompt once, completion across deltas
+    expect(total.promptTokens).toBe(5);
+    expect(total.completionTokens).toBe(45);
+    expect(total.promptTokens + total.completionTokens).toBe(50);
+  });
+
+  test("handles zero values correctly", () => {
+    const result = mergeUsage(
+      { promptTokens: 0, completionTokens: 0 },
+      { promptTokens: 0, completionTokens: 0 },
+    );
+    expect(result).toEqual({ promptTokens: 0, completionTokens: 0 });
+  });
+});

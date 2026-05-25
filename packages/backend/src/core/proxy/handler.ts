@@ -16,6 +16,7 @@ import {
 
 const DEFAULT_TIMEOUT = 120_000;
 const MAX_FALLBACK_ATTEMPTS = 5;
+const textEncoder = new TextEncoder();
 
 type FetchFn = typeof fetch;
 
@@ -57,7 +58,7 @@ export class ProxyHandler {
   }
 
   async handle(request: ProxyRequest): Promise<ProxyResult> {
-    const start = Date.now();
+    const start = performance.now();
     const id = request.requestId || generateId();
     const endpointId = request.endpointId;
 
@@ -107,7 +108,7 @@ export class ProxyHandler {
           adapterType: "",
           stream: request.stream,
           status,
-          durationMs: Date.now() - start,
+          durationMs: performance.now() - start,
           error: rawMessage,
           endpointId,
           correlationId,
@@ -170,7 +171,7 @@ export class ProxyHandler {
           adapterType,
           stream: request.stream,
           status,
-          durationMs: Date.now() - start,
+          durationMs: performance.now() - start,
           error: rawMessage,
           endpointId,
           correlationId,
@@ -215,7 +216,7 @@ export class ProxyHandler {
           adapterType,
           stream: request.stream,
           status: providerError.status,
-          durationMs: Date.now() - start,
+          durationMs: performance.now() - start,
           error: providerError.message,
           endpointId,
           correlationId,
@@ -255,7 +256,7 @@ export class ProxyHandler {
       adapterType: "",
       stream: request.stream,
       status: 503,
-      durationMs: Date.now() - start,
+      durationMs: performance.now() - start,
       error: "All providers rate-limited or unavailable",
       endpointId,
       correlationId,
@@ -286,7 +287,7 @@ export class ProxyHandler {
         adapterType,
         stream: isStream,
         status: 502,
-        durationMs: Date.now() - start,
+        durationMs: performance.now() - start,
         error: "Provider returned no body for stream",
         endpointId,
         correlationId,
@@ -323,7 +324,7 @@ export class ProxyHandler {
                     ...parsed,
                     done: false,
                   });
-                  controller.enqueue(new TextEncoder().encode(chunk));
+                  controller.enqueue(textEncoder.encode(chunk));
                 }
               }
             }
@@ -332,8 +333,8 @@ export class ProxyHandler {
               done: true,
               ...(totalUsage ? { usage: totalUsage } : {}),
             });
-            controller.enqueue(new TextEncoder().encode(finalChunk));
-            controller.enqueue(new TextEncoder().encode(formatStreamDone()));
+            controller.enqueue(textEncoder.encode(finalChunk));
+            controller.enqueue(textEncoder.encode(formatStreamDone()));
             controller.close();
 
             this.emitLog({
@@ -343,7 +344,7 @@ export class ProxyHandler {
               adapterType,
               stream: isStream,
               status: 200,
-              durationMs: Date.now() - start,
+              durationMs: performance.now() - start,
               tokens: totalUsage,
               endpointId,
             });
@@ -371,7 +372,7 @@ export class ProxyHandler {
 
             if (parsed.content || parsed.thinking) {
               const chunk = formatStreamChunk(id, providerModel, parsed);
-              controller.enqueue(new TextEncoder().encode(chunk));
+              controller.enqueue(textEncoder.encode(chunk));
             }
           }
         } catch (err) {
@@ -387,7 +388,7 @@ export class ProxyHandler {
               adapterType,
               stream: isStream,
               status: 500,
-              durationMs: Date.now() - start,
+              durationMs: performance.now() - start,
               error: rawMsg,
               endpointId,
               correlationId,
@@ -494,7 +495,7 @@ export class ProxyHandler {
       adapterType,
       stream: isStream,
       status: 200,
-      durationMs: Date.now() - start,
+      durationMs: performance.now() - start,
       tokens: usage,
       endpointId,
     });
@@ -547,13 +548,13 @@ export function isTimeoutError(err: unknown): err is TimeoutError {
   return err instanceof TimeoutError;
 }
 
-function mergeUsage(
+export function mergeUsage(
   existing: { promptTokens: number; completionTokens: number } | undefined,
   incoming: { promptTokens: number; completionTokens: number },
 ): { promptTokens: number; completionTokens: number } {
   if (!existing) return { ...incoming };
   return {
-    promptTokens: Math.max(existing.promptTokens, incoming.promptTokens),
+    promptTokens: existing.promptTokens + incoming.promptTokens,
     completionTokens: existing.completionTokens + incoming.completionTokens,
   };
 }
