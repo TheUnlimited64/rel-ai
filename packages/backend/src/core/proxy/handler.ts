@@ -377,6 +377,7 @@ export class ProxyHandler {
         } catch (err) {
           if (!hadError) {
             hadError = true;
+            void reader.cancel();
             const correlationId = generateCorrelationId();
             const rawMsg = err instanceof Error ? err.message : "Stream error";
             this.emitLog({

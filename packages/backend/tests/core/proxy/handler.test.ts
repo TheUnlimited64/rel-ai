@@ -819,6 +819,84 @@ describe("ProxyHandler", () => {
     });
   });
 
+  describe("stream error cancels upstream reader", () => {
+    test("upstream reader is cancelled when stream processing errors", async () => {
+      let upstreamCancelCalled = false;
+      let pullCount = 0;
+
+      // Pull-based source: yields data on first pull, stays open after
+      const upstreamBody = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          pullCount++;
+          if (pullCount === 1) {
+            controller.enqueue(new TextEncoder().encode('data: {invalid json!!!\n\n'));
+          }
+          // Subsequent pulls: no-op, stream stays open
+        },
+        cancel() {
+          upstreamCancelCalled = true;
+        },
+      });
+
+      // Adapter that throws on parseSSEChunk for malformed data
+      const throwingAdapter = createOpenAIMockAdapter();
+      const originalParse = throwingAdapter.parseSSEChunk.bind(throwingAdapter);
+      throwingAdapter.parseSSEChunk = (chunk: string) => {
+        const result = originalParse(chunk);
+        if (result) return result;
+        throw new Error("Failed to parse SSE chunk");
+      };
+
+      const mockResponse = new Response(upstreamBody as unknown as ReadableStream, {
+        headers: { "Content-Type": "text/event-stream" },
+      });
+
+      const fetchFn = (() => Promise.resolve(mockResponse)) as unknown as typeof fetch;
+
+      const resolver = buildResolver([realModelOpenAI], [providerOpenAI]);
+      const registry = new AdapterRegistry();
+      registry.register(throwingAdapter);
+      registry.register(new AnthropicAdapter());
+
+      const handler = new ProxyHandler({
+        resolver,
+        registry,
+        fetchFn,
+        onLog: () => {},
+        getProviderCredentials: (providerId: string) => {
+          const provider = [providerOpenAI].find(p => p.id === providerId);
+          if (!provider) return Promise.resolve(null);
+          return Promise.resolve({ baseUrl: provider.baseUrl, apiKey: provider.apiKey });
+        },
+      });
+
+      const result = await handler.handle({
+        model: "gpt-4",
+        messages: [{ role: "user", content: "Hi" }],
+        stream: true,
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      const stream = result.body as ReadableStream<Uint8Array>;
+      const reader = stream.getReader();
+
+      try {
+        while (true) {
+          const { done } = await reader.read();
+          if (done) break;
+        }
+      } catch {
+        // Expected — stream errors propagate
+      }
+
+      await new Promise((r) => setTimeout(r, 20));
+
+      expect(upstreamCancelCalled).toBe(true);
+    });
+  });
+
   describe("client disconnect aborts upstream request", () => {
     test("aborting signal before fetch completes propagates to fetch signal", async () => {
       const clientAbort = new AbortController();
