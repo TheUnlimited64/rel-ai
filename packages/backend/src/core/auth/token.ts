@@ -33,6 +33,19 @@ export async function hashToken(token: string): Promise<string> {
 }
 
 /**
+ * Extract a Bearer token from an Authorization header value.
+ * Returns null for missing, malformed, or empty-token headers.
+ * Rejects double-space patterns like "Bearer  token" (strict single-space split).
+ */
+export function extractBearerToken(
+  header: string | undefined | null,
+): string | null {
+  if (!header) return null;
+  const match = /^Bearer (\S+)$/.exec(header);
+  return match ? match[1] : null;
+}
+
+/**
  * Validate a token against the auth_tokens table.
  * Returns the token record if valid, null otherwise.
  * Updates lastUsedAt on successful validation.

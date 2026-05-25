@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
-import { generateToken, hashToken, maskToken, validateToken } from "../../../src/core/auth/token.js";
+import { generateToken, hashToken, maskToken, validateToken, extractBearerToken } from "../../../src/core/auth/token.js";
 import { createMemoryDb } from "../../../src/db/connection.js";
 import { authTokens } from "../../../src/db/schema/auth_tokens.js";
 
@@ -95,5 +95,43 @@ describe("maskToken", () => {
 
   test("masks exactly at 8 char boundary", () => {
     expect(maskToken("abcdefgh")).toBe("abc****efgh");
+  });
+});
+
+describe("extractBearerToken", () => {
+  test("extracts token from valid Bearer header", () => {
+    expect(extractBearerToken("Bearer abc123")).toBe("abc123");
+  });
+
+  test("returns null for undefined header", () => {
+    expect(extractBearerToken(undefined)).toBeNull();
+  });
+
+  test("returns null for null header", () => {
+    expect(extractBearerToken(null)).toBeNull();
+  });
+
+  test("returns null for empty string", () => {
+    expect(extractBearerToken("")).toBeNull();
+  });
+
+  test("returns null for missing Bearer prefix", () => {
+    expect(extractBearerToken("Basic abc123")).toBeNull();
+  });
+
+  test("returns null for empty token after Bearer", () => {
+    expect(extractBearerToken("Bearer ")).toBeNull();
+  });
+
+  test("returns null for double-space pattern", () => {
+    expect(extractBearerToken("Bearer  token")).toBeNull();
+  });
+
+  test("returns null for Bearer only without space", () => {
+    expect(extractBearerToken("Bearer")).toBeNull();
+  });
+
+  test("extracts token with special characters", () => {
+    expect(extractBearerToken("Bearer sk-abc_123.xyz")).toBe("sk-abc_123.xyz");
   });
 });

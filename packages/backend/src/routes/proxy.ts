@@ -3,6 +3,7 @@ import type { ProxyHandler } from "../core/proxy/handler.js";
 import type { RequestLogData } from "../core/proxy/types.js";
 import type { DbClient } from "../db/connection.js";
 import { validateEndpointToken } from "../core/auth/endpoint.js";
+import { extractBearerToken } from "../core/auth/token.js";
 import { endpointModels, models } from "../db/schema/index.js";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
@@ -32,6 +33,7 @@ export function createProxyRouter(db: DbClient, handler: ProxyHandler) {
   router.use("/:endpointPath/*", async (c, next) => {
     const endpointPath = c.req.param("endpointPath");
     const authHeader = c.req.header("Authorization");
+    const token = extractBearerToken(authHeader);
 
     if (!authHeader) {
       return c.json(
@@ -46,8 +48,7 @@ export function createProxyRouter(db: DbClient, handler: ProxyHandler) {
       );
     }
 
-    const parts = authHeader.split(" ");
-    if (parts.length !== 2 || parts[0] !== "Bearer" || !parts[1]) {
+    if (!token) {
       return c.json(
         {
           error: {
@@ -60,7 +61,7 @@ export function createProxyRouter(db: DbClient, handler: ProxyHandler) {
       );
     }
 
-    const endpoint = await validateEndpointToken(db, endpointPath, parts[1]);
+    const endpoint = await validateEndpointToken(db, endpointPath, token);
     if (!endpoint) {
       return c.json(
         {
@@ -130,6 +131,7 @@ export function createProxyRouter(db: DbClient, handler: ProxyHandler) {
       overrides: Object.keys(overrides).length > 0 ? overrides : undefined,
       endpointId: endpoint.id,
       requestId,
+      signal: c.req.raw.signal,
     };
 
     const result = await handler.handle(proxyRequest);

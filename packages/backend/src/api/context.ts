@@ -1,7 +1,7 @@
 import type { FetchCreateContextFnOptions } from "@trpc/server/adapters/fetch";
 import type { Context } from "hono";
 import type { DbClient } from "../db/connection.js";
-import { validateToken } from "../core/auth/token.js";
+import { validateToken, extractBearerToken } from "../core/auth/token.js";
 
 export type tRPCContext = {
   authorized?: boolean;
@@ -19,10 +19,8 @@ export function createContextFactory(db: DbClient) {
     _c: Context,
   ): Promise<tRPCContext> {
     const authHeader = opts.req.headers.get("Authorization");
-    if (!authHeader) return { db };
-
-    const [scheme, token] = authHeader.split(" ");
-    if (scheme !== "Bearer" || !token) return { db };
+    const token = extractBearerToken(authHeader);
+    if (!token) return { db };
 
     const tokenRecord = await validateToken(db, token);
     if (!tokenRecord) return { db };
