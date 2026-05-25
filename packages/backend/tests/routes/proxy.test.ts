@@ -529,6 +529,117 @@ describe("Proxy Routes", () => {
       expect((body.error as Record<string, unknown>).code).toBe("invalid_json");
     });
 
+    test("OpenAI compliance: content as array (multimodal) passes validation", async () => {
+      const sseBody = [
+        'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"Hi"},"finish_reason":null}]}\n\n',
+        "data: [DONE]\n\n",
+      ].join("");
+
+      const mockFetch = (() => {
+        return Promise.resolve(
+          new Response(sseBody, {
+            headers: { "Content-Type": "text/event-stream" },
+          }),
+        );
+      }) as unknown as typeof fetch;
+
+      const app = createTestApp(db, mockFetch);
+
+      const res = await app.request(`/v1/${ENDPOINT_PATH}/chat/completions`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${TEST_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "gpt-4",
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: "What's in this image?" },
+                { type: "image_url", image_url: { url: "https://example.com/img.png" } },
+              ],
+            },
+          ],
+          stream: true,
+        }),
+      });
+
+      expect(res.status).toBe(200);
+    });
+
+    test("OpenAI compliance: content as null passes validation", async () => {
+      const sseBody = [
+        'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"Hi"},"finish_reason":null}]}\n\n',
+        "data: [DONE]\n\n",
+      ].join("");
+
+      const mockFetch = (() => {
+        return Promise.resolve(
+          new Response(sseBody, {
+            headers: { "Content-Type": "text/event-stream" },
+          }),
+        );
+      }) as unknown as typeof fetch;
+
+      const app = createTestApp(db, mockFetch);
+
+      const res = await app.request(`/v1/${ENDPOINT_PATH}/chat/completions`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${TEST_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "gpt-4",
+          messages: [
+            { role: "user", content: "Hi" },
+            { role: "assistant", content: null, tool_calls: [{ id: "call_1", type: "function", function: { name: "get_weather", arguments: "{}" } }] },
+          ],
+          stream: true,
+        }),
+      });
+
+      expect(res.status).toBe(200);
+    });
+
+    test("OpenAI compliance: role 'tool' passes validation", async () => {
+      const sseBody = [
+        'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"Hi"},"finish_reason":null}]}\n\n',
+        "data: [DONE]\n\n",
+      ].join("");
+
+      const mockFetch = (() => {
+        return Promise.resolve(
+          new Response(sseBody, {
+            headers: { "Content-Type": "text/event-stream" },
+          }),
+        );
+      }) as unknown as typeof fetch;
+
+      const app = createTestApp(db, mockFetch);
+
+      const res = await app.request(`/v1/${ENDPOINT_PATH}/chat/completions`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${TEST_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "gpt-4",
+          messages: [
+            { role: "user", content: "What's the weather?" },
+            { role: "assistant", content: null, tool_calls: [{ id: "call_1", type: "function", function: { name: "get_weather", arguments: "{}" } }] },
+            { role: "tool", content: '{"temp": 72}', tool_call_id: "call_1" },
+          ],
+          stream: true,
+        }),
+      });
+
+      expect(res.status).toBe(200);
+    });
+
     test("stream defaults to true when omitted", async () => {
       const sseBody = [
         'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"Hi"},"finish_reason":null}]}\n\n',
@@ -696,8 +807,21 @@ describe("Proxy Routes", () => {
       expect((body.error as Record<string, unknown>).code).toBe("validation_error");
     });
 
-    test("role 'tool' rejected with validation error", async () => {
-      const app = createTestApp(db);
+    test("role 'tool' is accepted (OpenAI compliance)", async () => {
+      const sseBody = [
+        'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"Hi"},"finish_reason":null}]}\n\n',
+        "data: [DONE]\n\n",
+      ].join("");
+
+      const mockFetch = (() => {
+        return Promise.resolve(
+          new Response(sseBody, {
+            headers: { "Content-Type": "text/event-stream" },
+          }),
+        );
+      }) as unknown as typeof fetch;
+
+      const app = createTestApp(db, mockFetch);
 
       const res = await app.request(`/v1/${ENDPOINT_PATH}/chat/completions`, {
         method: "POST",
@@ -708,13 +832,11 @@ describe("Proxy Routes", () => {
         body: JSON.stringify({
           model: "gpt-4",
           messages: [{ role: "tool", content: "result" }],
-          stream: false,
+          stream: true,
         }),
       });
 
-      expect(res.status).toBe(400);
-      const body = await res.json() as Record<string, unknown>;
-      expect((body.error as Record<string, unknown>).code).toBe("validation_error");
+      expect(res.status).toBe(200);
     });
 
     test("passthrough params: temperature, max_tokens forwarded to provider", async () => {

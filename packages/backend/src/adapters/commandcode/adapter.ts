@@ -1,5 +1,14 @@
-import type { Message, ParsedChunk, ProviderError, TokenUsage } from "../../core/provider/types.js";
+import type { Message, ParsedChunk, ProviderError, TokenUsage, ContentPart } from "../../core/provider/types.js";
 import type { ProviderAdapter } from "../../core/provider/adapter.js";
+
+function contentToString(content: string | ContentPart[] | null): string {
+  if (content === null) return "";
+  if (typeof content === "string") return content;
+  return content
+    .filter((p) => p.type === "text")
+    .map((p) => p.text)
+    .join("\n");
+}
 
 export class CommandCodeAdapter implements ProviderAdapter {
   readonly type = "commandcode";
@@ -24,12 +33,12 @@ export class CommandCodeAdapter implements ProviderAdapter {
 
     const systemMessage = params.messages
       .filter((m) => m.role === "system")
-      .map((m) => m.content)
+      .map((m) => contentToString(m.content))
       .join("\n");
 
     const nonSystemMessages = params.messages
       .filter((m) => m.role !== "system")
-      .map((m) => ({ role: m.role, content: m.content }));
+      .map((m) => ({ role: m.role, content: contentToString(m.content) }));
 
     const max_tokens = (params.overrides?.max_tokens as number | undefined) ?? 4096;
 

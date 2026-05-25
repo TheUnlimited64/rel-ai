@@ -9,13 +9,18 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import type { ProxyRequest } from "../core/proxy/types.js";
 
+const ContentPartSchema: z.ZodType<import("../core/provider/types.js").ContentPart> = z.union([
+  z.object({ type: z.literal("text"), text: z.string() }),
+  z.object({ type: z.literal("image_url"), image_url: z.object({ url: z.string(), detail: z.enum(["auto", "low", "high"]).optional() }) }),
+]);
+
 const ChatCompletionSchema = z.object({
   model: z.string().min(1),
   messages: z
     .array(
       z.object({
-        role: z.enum(["system", "user", "assistant"]),
-        content: z.string(),
+        role: z.enum(["system", "user", "assistant", "tool", "developer"]),
+        content: z.union([z.string(), z.array(ContentPartSchema), z.null()]),
       }),
     )
     .min(1),
@@ -101,8 +106,10 @@ export function createProxyRouter(db: DbClient, handler: ProxyHandler) {
     }
 
     // Validate with Zod
+    console.log("[PROXY DEBUG] Request body:", JSON.stringify(body, null, 2));
     const parsed = ChatCompletionSchema.safeParse(body);
     if (!parsed.success) {
+      console.error("[PROXY DEBUG] Zod validation failed:", JSON.stringify(parsed.error.issues, null, 2));
       const issues = parsed.error.issues.map((i) => ({
         field: i.path.join("."),
         message: i.message,

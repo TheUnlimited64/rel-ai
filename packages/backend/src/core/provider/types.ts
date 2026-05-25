@@ -1,6 +1,10 @@
+export type ContentPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string; detail?: "auto" | "low" | "high" } };
+
 export type Message = {
-  role: "system" | "user" | "assistant";
-  content: string;
+  role: "system" | "user" | "assistant" | "tool" | "developer";
+  content: string | ContentPart[] | null;
 };
 
 export type ParsedChunk = {
