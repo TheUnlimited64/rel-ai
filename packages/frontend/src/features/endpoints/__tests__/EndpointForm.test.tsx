@@ -31,7 +31,7 @@ describe("EndpointForm", () => {
     await userEvent.type(screen.getByLabelText(/path/i), "INVALID PATH");
     await userEvent.click(screen.getByText("Create"));
     await waitFor(() => {
-      expect(screen.getByText(/only lowercase/i)).toBeInTheDocument();
+      expect(screen.getByText(/must be lowercase/i)).toBeInTheDocument();
     });
   });
 
@@ -40,6 +40,6 @@ describe("EndpointForm", () => {
     await userEvent.type(screen.getByLabelText(/name/i), "My Endpoint");
     await userEvent.type(screen.getByLabelText(/path/i), "my-endpoint");
     expect(screen.queryByText(/is required/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/only lowercase/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/must be lowercase/i)).not.toBeInTheDocument();
   });
 });
