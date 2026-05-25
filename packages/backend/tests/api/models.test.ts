@@ -427,7 +427,37 @@ describe("Models CRUD", () => {
       baseModelId: "gpt-4",
     });
 
-    await expect(caller.models.delete({ id: "gpt-4" })).rejects.toThrow("HAS_DEPENDENTS");
+    try {
+      await caller.models.delete({ id: "gpt-4" });
+      expect.unreachable("Should have thrown");
+    } catch (err: unknown) {
+      expect(err).toBeInstanceOf(Object);
+      const tErr = err as { message?: string; data?: { dependents?: string[] } };
+      expect(tErr.message).toBe("HAS_DEPENDENTS");
+      expect(tErr.data?.dependents).toEqual(["tuned-1"]);
+    }
+  });
+
+  test("delete: returns all dependents in structured data", async () => {
+    const caller = createCaller();
+    const providerId = insertProvider(db);
+
+    await caller.models.createReal({ id: "base-model", providerId, providerModel: "base" });
+    await caller.models.createVirtualTuned({ id: "tuned-a", baseModelId: "base-model" });
+    await caller.models.createVirtualTuned({ id: "tuned-b", baseModelId: "base-model" });
+    await caller.models.createVirtualFallback({ id: "fallback-a", fallbackChain: ["base-model"] });
+
+    try {
+      await caller.models.delete({ id: "base-model" });
+      expect.unreachable("Should have thrown");
+    } catch (err: unknown) {
+      const tErr = err as { message?: string; data?: { dependents?: string[] } };
+      expect(tErr.message).toBe("HAS_DEPENDENTS");
+      const deps = tErr.data?.dependents ?? [];
+      expect(deps).toContain("tuned-a");
+      expect(deps).toContain("tuned-b");
+      expect(deps).toContain("fallback-a");
+    }
   });
 
   test("delete: rejects when model referenced in fallback chain", async () => {
@@ -440,7 +470,14 @@ describe("Models CRUD", () => {
       fallbackChain: ["model-a"],
     });
 
-    await expect(caller.models.delete({ id: "model-a" })).rejects.toThrow("HAS_DEPENDENTS");
+    try {
+      await caller.models.delete({ id: "model-a" });
+      expect.unreachable("Should have thrown");
+    } catch (err: unknown) {
+      const tErr = err as { message?: string; data?: { dependents?: string[] } };
+      expect(tErr.message).toBe("HAS_DEPENDENTS");
+      expect(tErr.data?.dependents).toEqual(["fallback-1"]);
+    }
   });
 
   test("delete: throws NOT_FOUND for missing model", async () => {

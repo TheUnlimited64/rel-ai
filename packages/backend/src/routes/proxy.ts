@@ -13,7 +13,7 @@ const ChatCompletionSchema = z.object({
   messages: z
     .array(
       z.object({
-        role: z.string().min(1),
+        role: z.enum(["system", "user", "assistant"]),
         content: z.string(),
       }),
     )
@@ -124,7 +124,7 @@ export function createProxyRouter(db: DbClient, handler: ProxyHandler) {
     // Build proxy request
     const proxyRequest: ProxyRequest = {
       model,
-      messages: messages as Array<{ role: "system" | "user" | "assistant"; content: string }>,
+      messages,
       stream,
       endpointId: endpoint.id,
     };

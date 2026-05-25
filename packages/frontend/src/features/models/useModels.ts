@@ -4,10 +4,16 @@ import { trpcReact as trpcHooks } from "@/lib/trpc";
 export type ModelTypeFilter = "all" | "real" | "virtual";
 
 export function parseDependents(error: unknown): string[] | null {
-  const msg = error instanceof Error ? error.message : String(error);
-  const match = msg.match(/HAS_DEPENDENTS:(.+)/);
-  if (!match) return null;
-  return (match[1] ?? "").split(",");
+  if (typeof error === "object" && error !== null && "data" in error) {
+    const data = (error as { data?: unknown }).data;
+    if (typeof data === "object" && data !== null && "dependents" in data) {
+      const dependents = (data as { dependents?: unknown }).dependents;
+      if (Array.isArray(dependents) && dependents.every((d): d is string => typeof d === "string")) {
+        return dependents;
+      }
+    }
+  }
+  return null;
 }
 
 export function useModels() {

@@ -19,6 +19,12 @@ const MAX_FALLBACK_ATTEMPTS = 5;
 
 type FetchFn = typeof fetch;
 
+function generateCorrelationId(): string {
+  const bytes = new Uint8Array(8);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 export interface ProviderCredentials {
   baseUrl: string;
   apiKey: string;
@@ -67,13 +73,11 @@ export class ProxyHandler {
         const status = err instanceof ModelNotFoundError ? 404
           : err instanceof AllProvidersFailedError ? 503
           : 500;
-        const error: ProxyError = {
-          code: err instanceof ModelNotFoundError ? "model_not_found"
-            : err instanceof AllProvidersFailedError ? "all_providers_failed"
-            : "internal_error",
-          message: err instanceof Error ? err.message : "Unknown error",
-          type: err instanceof Error ? err.name : "Error",
-        };
+        const correlationId = generateCorrelationId();
+        const code = err instanceof ModelNotFoundError ? "model_not_found"
+          : err instanceof AllProvidersFailedError ? "all_providers_failed"
+          : "internal_error";
+        const rawMessage = err instanceof Error ? err.message : "Unknown error";
         this.emitLog({
           model: request.model,
           providerId: "",
@@ -82,9 +86,16 @@ export class ProxyHandler {
           stream: request.stream,
           status,
           durationMs: Date.now() - start,
-          error: error.message,
+          error: rawMessage,
           endpointId,
+          correlationId,
         });
+        const error: ProxyError = {
+          code,
+          message: "An internal error occurred. Please try again later.",
+          type: err instanceof Error ? err.name : "Error",
+          correlationId,
+        };
         return { ok: false, status, error };
       }
 
@@ -127,11 +138,9 @@ export class ProxyHandler {
       } catch (err) {
         const isTimeout = isTimeoutError(err);
         const status = isTimeout ? 504 : 502;
-        const error: ProxyError = {
-          code: isTimeout ? "timeout" : "network_error",
-          message: err instanceof Error ? err.message : "Network error",
-          type: isTimeout ? "TimeoutError" : "NetworkError",
-        };
+        const correlationId = generateCorrelationId();
+        const code = isTimeout ? "timeout" : "network_error";
+        const rawMessage = err instanceof Error ? err.message : "Network error";
         this.emitLog({
           model: request.model,
           providerId,
@@ -140,9 +149,16 @@ export class ProxyHandler {
           stream: request.stream,
           status,
           durationMs: Date.now() - start,
-          error: error.message,
+          error: rawMessage,
           endpointId,
+          correlationId,
         });
+        const error: ProxyError = {
+          code,
+          message: "An internal error occurred. Please try again later.",
+          type: isTimeout ? "TimeoutError" : "NetworkError",
+          correlationId,
+        };
         return { ok: false, status, error };
       }
 

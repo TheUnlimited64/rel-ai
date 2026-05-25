@@ -507,6 +507,88 @@ describe("Proxy Routes", () => {
 
       expect(res.status).toBe(401);
     });
+
+    test("valid roles (system, user, assistant) pass validation", async () => {
+      const mockFetch = (() => {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              id: "chatcmpl-test",
+              object: "chat.completion",
+              choices: [
+                {
+                  index: 0,
+                  message: { role: "assistant", content: "Hi" },
+                  finish_reason: "stop",
+                },
+              ],
+              usage: { prompt_tokens: 5, completion_tokens: 2, total_tokens: 7 },
+            }),
+            { headers: { "Content-Type": "application/json" } },
+          ),
+        );
+      }) as unknown as typeof fetch;
+
+      const app = createTestApp(db, mockFetch);
+
+      for (const role of ["system", "user", "assistant"] as const) {
+        const res = await app.request(`/v1/${ENDPOINT_PATH}/chat/completions`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${TEST_TOKEN}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "gpt-4",
+            messages: [{ role, content: "Hello" }],
+            stream: false,
+          }),
+        });
+        expect(res.status).toBe(200);
+      }
+    });
+
+    test("invalid role rejected with validation error", async () => {
+      const app = createTestApp(db);
+
+      const res = await app.request(`/v1/${ENDPOINT_PATH}/chat/completions`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${TEST_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "gpt-4",
+          messages: [{ role: "invalid", content: "Hi" }],
+          stream: false,
+        }),
+      });
+
+      expect(res.status).toBe(400);
+      const body = await res.json() as Record<string, unknown>;
+      expect((body.error as Record<string, unknown>).code).toBe("validation_error");
+    });
+
+    test("role 'tool' rejected with validation error", async () => {
+      const app = createTestApp(db);
+
+      const res = await app.request(`/v1/${ENDPOINT_PATH}/chat/completions`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${TEST_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "gpt-4",
+          messages: [{ role: "tool", content: "result" }],
+          stream: false,
+        }),
+      });
+
+      expect(res.status).toBe(400);
+      const body = await res.json() as Record<string, unknown>;
+      expect((body.error as Record<string, unknown>).code).toBe("validation_error");
+    });
   });
 
   describe("GET /v1/:endpointPath/models", () => {

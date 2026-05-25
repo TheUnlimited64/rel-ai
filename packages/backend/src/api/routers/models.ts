@@ -10,6 +10,7 @@ import {
   updateModel,
   deleteModel,
   testResolution,
+  HasDependentsError,
 } from "../../core/model/service.js";
 
 const CreateRealModelInputSchema = z.object({
@@ -76,8 +77,12 @@ function mapServiceError<T>(fn: () => T | Promise<T>): Promise<T> {
       if (msg === "INVALID_BASE_MODEL") {
         throw new TRPCError({ code: "BAD_REQUEST", message: msg });
       }
-      if (msg.startsWith("HAS_DEPENDENTS")) {
-        throw new TRPCError({ code: "PRECONDITION_FAILED", message: msg });
+      if (e instanceof HasDependentsError) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "HAS_DEPENDENTS",
+          data: { dependents: e.dependents },
+        });
       }
     }
     throw e;

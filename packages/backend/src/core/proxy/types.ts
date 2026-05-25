@@ -16,6 +16,7 @@ export type ProxyError = {
   code: string;
   message: string;
   type: string;
+  correlationId?: string;
 };
 
 export type RequestLogData = {

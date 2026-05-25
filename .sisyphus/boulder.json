@@ -1,0 +1,22 @@
+{
+  "active_plan": "/home/default/projects/llmpack_v2/.sisyphus/plans/rel-ai-fix-all-tickets.md",
+  "started_at": "2026-05-25T13:20:18.276Z",
+  "session_ids": [
+    "ses_1a0b4e4b3ffefzzeNyWfikRwz2"
+  ],
+  "session_origins": {
+    "ses_1a0b4e4b3ffefzzeNyWfikRwz2": "direct"
+  },
+  "plan_name": "rel-ai-fix-all-tickets",
+  "agent": "atlas",
+  "task_sessions": {
+    "final-wave:f1": {
+      "task_key": "final-wave:f1",
+      "task_label": "F1",
+      "task_title": "**Plan Compliance Audit** — `oracle`",
+      "session_id": "ses_1a0b3bdfeffepOE0kRFgaa9anm",
+      "agent": "Sisyphus-Junior",
+      "updated_at": "2026-05-25T13:25:24.288Z"
+    }
+  }
+}

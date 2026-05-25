@@ -96,6 +96,14 @@ function buildHandler(
     registry,
     fetchFn: fetchFn ?? (() => Promise.resolve(new Response())),
     onLog: onLog ?? (() => {}),
+    getProviderCredentials: (providerId: string) => {
+      const provider = providers.find(p => p.id === providerId);
+      if (!provider) return Promise.resolve(null);
+      return Promise.resolve({
+        baseUrl: provider.baseUrl,
+        apiKey: provider.apiKey,
+      });
+    },
     timeout,
   });
 }
