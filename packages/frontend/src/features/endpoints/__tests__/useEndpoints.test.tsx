@@ -2,6 +2,16 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useEndpoints } from "../hooks/useEndpoints";
 
+interface MockModule {
+  trpcReact: typeof import("@/lib/trpc").trpcReact;
+  _mocks: {
+    mockInvalidate: ReturnType<typeof vi.fn>;
+    mockGetInvalidate: ReturnType<typeof vi.fn>;
+    mockSetData: ReturnType<typeof vi.fn>;
+    toggleMutate: ReturnType<typeof vi.fn>;
+  };
+}
+
 vi.mock("@/lib/trpc", () => {
   const mockInvalidate = vi.fn().mockResolvedValue(undefined);
   const mockGetInvalidate = vi.fn().mockResolvedValue(undefined);
@@ -107,7 +117,7 @@ describe("useEndpoints", () => {
       wrapper: ({ children }) => <div>{children}</div>,
     });
 
-    const mod = await import("@/lib/trpc");
+    const mod = await import("@/lib/trpc") as unknown as MockModule;
     const mockFn = vi.mocked(mod.trpcReact.endpoints.update.useMutation);
     const opts = mockFn.mock.calls[0]?.[0] as Record<string, unknown>;
     const onSuccess = opts?.onSuccess as () => Promise<void>;
@@ -134,7 +144,7 @@ describe("useEndpoints", () => {
     });
 
     const ep = result.current.endpoints[0]!;
-    const mod = await import("@/lib/trpc");
+    const mod = await import("@/lib/trpc") as unknown as MockModule;
     const mockFn = vi.mocked(mod.trpcReact.endpoints.update.useMutation);
     const mutationResult = mockFn.mock.results[0]?.value as { mutate: ReturnType<typeof vi.fn> };
     mutationResult.mutate.mockClear();
