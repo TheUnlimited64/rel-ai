@@ -818,6 +818,80 @@ describe("ProxyHandler", () => {
       }
     });
   });
+
+  describe("client disconnect aborts upstream request", () => {
+    test("aborting signal before fetch completes propagates to fetch signal", async () => {
+      const clientAbort = new AbortController();
+      let fetchSignal: AbortSignal | undefined;
+
+      const fetchFn = (async (_url: string, init: RequestInit) => {
+        fetchSignal = init.signal;
+        return openAICompletion("Aborted");
+      }) as unknown as typeof fetch;
+
+      const handler = buildHandler([realModelOpenAI], [providerOpenAI], fetchFn);
+
+      clientAbort.abort();
+
+      const result = await handler.handle({
+        model: "gpt-4",
+        messages: [{ role: "user", content: "Hi" }],
+        stream: false,
+        signal: clientAbort.signal,
+      });
+
+      expect(fetchSignal).toBeDefined();
+      expect(fetchSignal!.aborted).toBe(true);
+    });
+
+    test("aborting signal during streaming propagates to fetch signal via cancel", async () => {
+      const clientAbort = new AbortController();
+      let fetchSignal: AbortSignal | undefined;
+
+      const fetchFn = (async (_url: string, init: RequestInit) => {
+        fetchSignal = init.signal;
+        return openAIStreamChunks([{ content: "Hello" }, { done: true }]);
+      }) as unknown as typeof fetch;
+
+      const handler = buildHandler([realModelOpenAI], [providerOpenAI], fetchFn);
+
+      const result = await handler.handle({
+        model: "gpt-4",
+        messages: [{ role: "user", content: "Hi" }],
+        stream: true,
+        signal: clientAbort.signal,
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      expect(fetchSignal).toBeDefined();
+      expect(fetchSignal!.aborted).toBe(false);
+
+      const stream = result.body as ReadableStream<Uint8Array>;
+      stream.cancel();
+
+      await new Promise((r) => setTimeout(r, 20));
+
+      expect(fetchSignal!.aborted).toBe(true);
+    });
+
+    test("request without signal completes normally", async () => {
+      const fetchFn = createMockFetch([openAICompletion("No signal")]);
+      const handler = buildHandler([realModelOpenAI], [providerOpenAI], fetchFn);
+
+      const result = await handler.handle({
+        model: "gpt-4",
+        messages: [{ role: "user", content: "Hi" }],
+        stream: false,
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      const body = JSON.parse(result.body as string);
+      expect(body.choices[0].message.content).toBe("No signal");
+    });
+  });
 });
 
 // --- Helpers ---

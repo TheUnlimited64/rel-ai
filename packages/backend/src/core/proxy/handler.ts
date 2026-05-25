@@ -61,6 +61,28 @@ export class ProxyHandler {
     const id = request.requestId || generateId();
     const endpointId = request.endpointId;
 
+    const abortController = new AbortController();
+    const onExternalAbort = () => abortController.abort();
+    if (request.signal?.aborted) {
+      abortController.abort();
+    }
+    request.signal?.addEventListener("abort", onExternalAbort);
+
+    try {
+      return await this.handleWithAbort(request, start, id, endpointId, abortController);
+    } finally {
+      request.signal?.removeEventListener("abort", onExternalAbort);
+    }
+  }
+
+  private async handleWithAbort(
+    request: ProxyRequest,
+    start: number,
+    id: string,
+    endpointId: string | undefined,
+    abortController: AbortController,
+  ): Promise<ProxyResult> {
+
     // Retry loop: on rate limit, mark unhealthy and try next provider
     const attemptedProviders = new Set<string>();
 
@@ -134,7 +156,7 @@ export class ProxyHandler {
           method: "POST",
           headers: providerRequest.headers,
           body: JSON.stringify(providerRequest.body),
-        });
+        }, abortController, request.signal);
       } catch (err) {
         const isTimeout = isTimeoutError(err);
         const status = isTimeout ? 504 : 502;
@@ -212,7 +234,7 @@ export class ProxyHandler {
 
       // Success — proceed with streaming or non-streaming
       if (request.stream) {
-        return this.handleStream(id, request.model, providerModel, adapterType, providerId, response, adapter, start, request.stream, endpointId);
+        return this.handleStream(id, request.model, providerModel, adapterType, providerId, response, adapter, start, request.stream, endpointId, abortController);
       }
 
       return this.handleNonStream(id, request.model, providerModel, adapterType, providerId, response, adapter, start, request.stream, endpointId);
@@ -251,7 +273,8 @@ export class ProxyHandler {
     adapter: ProviderAdapter,
     start: number,
     isStream: boolean,
-    endpointId?: string,
+    endpointId: string | undefined,
+    abortController?: AbortController,
   ): ProxyResult {
     const body = response.body;
     if (!body) {
@@ -377,6 +400,7 @@ export class ProxyHandler {
         }
       },
       cancel: async () => {
+        abortController?.abort();
         await reader.cancel();
       },
     });
@@ -482,18 +506,21 @@ export class ProxyHandler {
     };
   }
 
-  private async fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeout);
+  private async fetchWithTimeout(url: string, init: RequestInit, abortController: AbortController, externalSignal?: AbortSignal): Promise<Response> {
+    const timer = setTimeout(() => abortController.abort(), this.timeout);
 
     try {
       const response = await this.fetchFn(url, {
         ...init,
-        signal: controller.signal,
+        signal: abortController.signal,
       });
       return response;
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") {
+        // Client disconnect, not timeout
+        if (externalSignal?.aborted) {
+          throw err;
+        }
         throw new TimeoutError(this.timeout);
       }
       throw err;
