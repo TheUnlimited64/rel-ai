@@ -54,7 +54,7 @@ describe("CommandCodeAdapter", () => {
 
       expect(result.headers["Content-Type"]).toBe("application/json");
       expect(result.headers["x-command-code-version"]).toBe("0.24.1");
-      expect(result.headers["x-cli-environment"]).toBe("production");
+      expect(result.headers["x-cli-environment"]).toBe("external");
     });
 
     test("wraps messages in params object with config metadata", () => {
@@ -69,7 +69,7 @@ describe("CommandCodeAdapter", () => {
       expect(body.config).toBeDefined();
       expect(body.memory).toBe("");
       expect(body.taste).toBe("");
-      expect(body.skills).toBeNull();
+      expect(body.skills).toBe("");
       expect(body.permissionMode).toBe("standard");
 
       const params = body.params as Record<string, unknown>;
@@ -109,7 +109,7 @@ describe("CommandCodeAdapter", () => {
 
       const body = result.body as Record<string, unknown>;
       const params = body.params as Record<string, unknown>;
-      expect(params.system).toBe("Rule one.\nRule two.");
+      expect(params.system).toBe("Rule one.\n\nRule two.");
     });
 
     test("defaults max_tokens to 4096", () => {
@@ -380,6 +380,150 @@ describe("CommandCodeAdapter", () => {
         overrides: { apiKey: "cc-test-key" },
       });
       expect(result.url).toBe("https://custom-proxy.com/alpha/generate");
+    });
+  });
+
+  describe("streamDelimiter", () => {
+    test("uses newline delimiter (LDJSON)", () => {
+      expect(adapter.streamDelimiter).toBe("\n");
+    });
+  });
+
+  describe("convertMessages", () => {
+    test("converts assistant messages to typed content array", () => {
+      const result = adapter.createRequest({
+        model: "deepseek/deepseek-v4-flash",
+        messages: [
+          { role: "user", content: "Hello" },
+          { role: "assistant", content: "Hi there", tool_calls: [{ id: "tc1", type: "function" as const, function: { name: "search", arguments: "{\"q\":\"test\"}" } }] },
+          { role: "tool", content: "search result", tool_call_id: "tc1", name: "search" },
+        ],
+        stream: true,
+        overrides: { apiKey: "cc-test-key" },
+      });
+
+      const body = result.body as Record<string, unknown>;
+      const params = body.params as Record<string, unknown>;
+      const messages = params.messages as unknown[];
+      const assistantMsg = messages[1] as { role: string; content: unknown[] };
+      expect(assistantMsg.role).toBe("assistant");
+      expect(Array.isArray(assistantMsg.content)).toBe(true);
+      expect(assistantMsg.content.some((p: Record<string, unknown>) => p.type === "text")).toBe(true);
+      expect(assistantMsg.content.some((p: Record<string, unknown>) => p.type === "tool-call")).toBe(true);
+    });
+
+    test("converts tool messages to typed content array", () => {
+      const result = adapter.createRequest({
+        model: "deepseek/deepseek-v4-flash",
+        messages: [
+          { role: "user", content: "Search for X" },
+          { role: "assistant", content: null, tool_calls: [{ id: "tc1", type: "function" as const, function: { name: "search", arguments: "{\"q\":\"X\"}" } }] },
+          { role: "tool", content: "result data", tool_call_id: "tc1", name: "search" },
+        ],
+        stream: true,
+        overrides: { apiKey: "cc-test-key" },
+      });
+
+      const body = result.body as Record<string, unknown>;
+      const params = body.params as Record<string, unknown>;
+      const messages = params.messages as unknown[];
+      const toolMsg = messages[2] as { role: string; content: unknown[] };
+      expect(toolMsg.role).toBe("tool");
+      expect(Array.isArray(toolMsg.content)).toBe(true);
+      expect((toolMsg.content[0] as Record<string, unknown>).type).toBe("tool-result");
+    });
+
+    test("filters out unpaired tool calls/results", () => {
+      const result = adapter.createRequest({
+        model: "deepseek/deepseek-v4-flash",
+        messages: [
+          { role: "user", content: "Hello" },
+          { role: "assistant", content: "OK", tool_calls: [{ id: "orphan", type: "function" as const, function: { name: "x", arguments: "{}" } }] },
+        ],
+        stream: true,
+        overrides: { apiKey: "cc-test-key" },
+      });
+
+      const body = result.body as Record<string, unknown>;
+      const params = body.params as Record<string, unknown>;
+      const messages = params.messages as unknown[];
+      const assistantMsg = messages[1] as { role: string; content: unknown[] };
+      expect(assistantMsg.content.some((p: Record<string, unknown>) => p.type === "tool-call")).toBe(false);
+    });
+  });
+
+  describe("convertTools", () => {
+    test("converts OpenAI tools to CC format", () => {
+      const result = adapter.createRequest({
+        model: "deepseek/deepseek-v4-flash",
+        messages: [{ role: "user", content: "Hello" }],
+        stream: true,
+        overrides: {
+          apiKey: "cc-test-key",
+          tools: [{ type: "function", function: { name: "get_weather", description: "Get weather", parameters: { type: "object" } } }],
+        },
+      });
+
+      const body = result.body as Record<string, unknown>;
+      const params = body.params as Record<string, unknown>;
+      expect(params.tools).toEqual([{ type: "function", name: "get_weather", description: "Get weather", input_schema: { type: "object" } }]);
+    });
+  });
+
+  describe("param filtering", () => {
+    test("never sends tool_choice in params", () => {
+      const result = adapter.createRequest({
+        model: "deepseek/deepseek-v4-flash",
+        messages: [{ role: "user", content: "Hello" }],
+        stream: true,
+        overrides: { apiKey: "cc-test-key" },
+      });
+
+      const body = result.body as Record<string, unknown>;
+      const params = body.params as Record<string, unknown>;
+      expect(params).not.toHaveProperty("tool_choice");
+    });
+
+    test("does not leak unknown OpenAI params", () => {
+      const result = adapter.createRequest({
+        model: "deepseek/deepseek-v4-flash",
+        messages: [{ role: "user", content: "Hello" }],
+        stream: true,
+        overrides: { apiKey: "cc-test-key", frequency_penalty: 0.5, presence_penalty: 0.3, top_p: 0.9, n: 1, logprobs: true },
+      });
+
+      const body = result.body as Record<string, unknown>;
+      const params = body.params as Record<string, unknown>;
+      expect(params).not.toHaveProperty("frequency_penalty");
+      expect(params).not.toHaveProperty("presence_penalty");
+      expect(params).not.toHaveProperty("top_p");
+      expect(params).not.toHaveProperty("n");
+      expect(params).not.toHaveProperty("logprobs");
+    });
+  });
+
+  describe("baseUrl handling", () => {
+    test("handles baseUrl that already ends with /alpha/generate", () => {
+      const result = adapter.createRequest({
+        model: "deepseek/deepseek-v4-flash",
+        messages: [{ role: "user", content: "Hello" }],
+        stream: true,
+        overrides: { apiKey: "cc-test-key", baseUrl: "https://api.commandcode.ai/alpha/generate" },
+      });
+
+      expect(result.url).toBe("https://api.commandcode.ai/alpha/generate");
+    });
+  });
+
+  describe("success:false rejection", () => {
+    test("throws on success:false chunk from CC", () => {
+      const chunk = JSON.stringify({ success: false, error: { message: "Invalid params" } }) + "\n";
+      expect(() => adapter.parseSSEChunk(chunk)).toThrow("Invalid params");
+    });
+
+    test("throws on success:false with string error", () => {
+      const chunk = JSON.stringify({ success: false, error: "Bad request" }) + "\n";
+      expect(() => adapter.parseSSEChunk(chunk)).toThrow("Bad request");
     });
   });
 });
