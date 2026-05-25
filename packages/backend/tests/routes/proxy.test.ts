@@ -33,7 +33,7 @@ const ENDPOINT_PATH = "test-ep";
 
 function seedDb(db: DbClient, overrides?: { providerApiKey?: string }) {
   const providerId = crypto.randomUUID();
-  const encryptedKey = overrides?.providerApiKey ?? "sk-test-real-key";
+  const rawApiKey = overrides?.providerApiKey ?? "sk-test-real-key";
 
   db.insert(providers)
     .values({
@@ -41,7 +41,7 @@ function seedDb(db: DbClient, overrides?: { providerApiKey?: string }) {
       name: "Test OpenAI",
       adapterType: "openai",
       baseUrl: "https://api.openai.com",
-      apiKey: encryptedKey,
+      apiKey: rawApiKey,
       enabled: true,
     })
     .run();

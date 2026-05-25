@@ -36,7 +36,12 @@ function toResponse(row: ProviderRow, maskedKey: string): ProviderResponse {
   };
 }
 
+export function isEncryptedKey(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
+}
+
 export async function maskApiKey(encryptedKey: string): Promise<string> {
+  if (!isEncryptedKey(encryptedKey)) return "****";
   try {
     const decrypted = await decrypt(encryptedKey);
     if (decrypted.length <= 3) return "****";
@@ -74,7 +79,8 @@ export async function createProvider(
     })
     .run();
 
-  const row = db.select().from(providers).where(eq(providers.id, id)).get()!;
+  const row = db.select().from(providers).where(eq(providers.id, id)).get();
+  if (!row) throw new Error("NOT_FOUND");
   const masked = await maskApiKey(encryptedKey);
   return { ...toResponse(row, masked), apiKeyRaw: input.apiKey };
 }
@@ -124,7 +130,8 @@ export async function updateProvider(
 
   db.update(providers).set(updates).where(eq(providers.id, input.id)).run();
 
-  const row = db.select().from(providers).where(eq(providers.id, input.id)).get()!;
+  const row = db.select().from(providers).where(eq(providers.id, input.id)).get();
+  if (!row) throw new Error("NOT_FOUND");
   const masked = await maskApiKey(row.apiKey);
   return toResponse(row, masked);
 }
@@ -158,7 +165,8 @@ export async function regenerateApiKey(
     .where(eq(providers.id, id))
     .run();
 
-  const updated = db.select().from(providers).where(eq(providers.id, id)).get()!;
+  const updated = db.select().from(providers).where(eq(providers.id, id)).get();
+  if (!updated) throw new Error("NOT_FOUND");
   const masked = await maskApiKey(encryptedKey);
   return { ...toResponse(updated, masked), apiKeyRaw: rawKey };
 }

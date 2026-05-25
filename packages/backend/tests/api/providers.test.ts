@@ -6,7 +6,8 @@ import { authTokens } from "../../src/db/schema/auth_tokens.js";
 import { providers } from "../../src/db/schema/providers.js";
 import { models } from "../../src/db/schema/models.js";
 import { hashToken } from "../../src/core/auth/token.js";
-import { resetEncryptionKey, decrypt } from "../../src/core/auth/encryption.js";
+import { resetEncryptionKey, decrypt, encrypt } from "../../src/core/auth/encryption.js";
+import { maskApiKey, isEncryptedKey } from "../../src/core/provider/service.js";
 import { appRouter } from "../../src/api/router.js";
 import type { tRPCContext } from "../../src/api/context.js";
 
@@ -256,5 +257,53 @@ describe("Providers CRUD", () => {
     const parsed = JSON.parse(row.config!);
     expect(parsed.temperature).toBe(0.7);
     expect(parsed.maxTokens).toBe(4096);
+  });
+
+  test("update without apiKey preserves existing encrypted key", async () => {
+    const caller = createCaller();
+
+    const created = await caller.providers.create({
+      name: "Key Preserve",
+      adapterType: "openai",
+      baseUrl: "https://api.openai.com",
+      apiKey: "sk-preserve-test-12345",
+    });
+
+    const originalRow = db.select().from(providers).where(eq(providers.id, created.id)).get()!;
+
+    // Update name only — apiKey not provided
+    const updated = await caller.providers.update({
+      id: created.id,
+      name: "Key Preserve Updated",
+    });
+
+    expect(updated.name).toBe("Key Preserve Updated");
+    expect(updated.apiKey).toBe("sk-****");
+
+    // Verify encrypted value unchanged in DB
+    const updatedRow = db.select().from(providers).where(eq(providers.id, created.id)).get()!;
+    expect(updatedRow.apiKey).toBe(originalRow.apiKey);
+
+    // Verify decryption still works
+    const decrypted = await decrypt(updatedRow.apiKey);
+    expect(decrypted).toBe("sk-preserve-test-12345");
+  });
+
+  test("isEncryptedKey type guard validates correctly", () => {
+    expect(isEncryptedKey("abc123")).toBe(true);
+    expect(isEncryptedKey("a")).toBe(true);
+    expect(isEncryptedKey("")).toBe(false);
+    expect(isEncryptedKey(null)).toBe(false);
+    expect(isEncryptedKey(undefined)).toBe(false);
+    expect(isEncryptedKey(123)).toBe(false);
+  });
+
+  test("maskApiKey handles empty/falsy encrypted key gracefully", async () => {
+    await expect(maskApiKey("")).resolves.toBe("****");
+    // Non-encrypted gibberish also falls back gracefully
+    await expect(maskApiKey("invalid-ciphertext")).resolves.toBe("****");
+    // Valid encrypted key masks correctly
+    const encrypted = await encrypt("sk-real-key-123");
+    await expect(maskApiKey(encrypted)).resolves.toBe("sk-****");
   });
 });
