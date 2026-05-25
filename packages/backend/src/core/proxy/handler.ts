@@ -184,11 +184,7 @@ export class ProxyHandler {
         }
 
         // Non-rate-limit error → return immediately
-        const error: ProxyError = {
-          code: providerError.code,
-          message: providerError.message,
-          type: "provider_error",
-        };
+        const correlationId = generateCorrelationId();
 
         this.emitLog({
           model: request.model,
@@ -198,9 +194,18 @@ export class ProxyHandler {
           stream: request.stream,
           status: providerError.status,
           durationMs: Date.now() - start,
-          error: error.message,
+          error: providerError.message,
           endpointId,
+          correlationId,
+          providerErrorCode: providerError.code,
         });
+
+        const error: ProxyError = {
+          code: providerError.code,
+          message: "An internal error occurred. Please try again later.",
+          type: "provider_error",
+          correlationId,
+        };
 
         return { ok: false, status: providerError.status, error };
       }
@@ -214,10 +219,12 @@ export class ProxyHandler {
     }
 
     // Exhausted all fallback attempts
+    const correlationId = generateCorrelationId();
     const error: ProxyError = {
       code: "all_providers_failed",
-      message: "All providers rate-limited or unavailable",
+      message: "An internal error occurred. Please try again later.",
       type: "ProviderError",
+      correlationId,
     };
     this.emitLog({
       model: request.model,
@@ -227,8 +234,9 @@ export class ProxyHandler {
       stream: request.stream,
       status: 503,
       durationMs: Date.now() - start,
-      error: error.message,
+      error: "All providers rate-limited or unavailable",
       endpointId,
+      correlationId,
     });
     return { ok: false, status: 503, error };
   }
@@ -247,11 +255,7 @@ export class ProxyHandler {
   ): ProxyResult {
     const body = response.body;
     if (!body) {
-      const error: ProxyError = {
-        code: "no_body",
-        message: "Provider returned no body for stream",
-        type: "provider_error",
-      };
+      const correlationId = generateCorrelationId();
       this.emitLog({
         model,
         providerId,
@@ -260,9 +264,16 @@ export class ProxyHandler {
         stream: isStream,
         status: 502,
         durationMs: Date.now() - start,
-        error: error.message,
+        error: "Provider returned no body for stream",
         endpointId,
+        correlationId,
       });
+      const error: ProxyError = {
+        code: "no_body",
+        message: "An internal error occurred. Please try again later.",
+        type: "provider_error",
+        correlationId,
+      };
       return { ok: false, status: 502, error };
     }
 
@@ -343,7 +354,8 @@ export class ProxyHandler {
         } catch (err) {
           if (!hadError) {
             hadError = true;
-            const errorMsg = err instanceof Error ? err.message : "Stream error";
+            const correlationId = generateCorrelationId();
+            const rawMsg = err instanceof Error ? err.message : "Stream error";
             this.emitLog({
               model,
               providerId,
@@ -352,11 +364,16 @@ export class ProxyHandler {
               stream: isStream,
               status: 500,
               durationMs: Date.now() - start,
-              error: errorMsg,
+              error: rawMsg,
               endpointId,
+              correlationId,
             });
+            const masked = new Error("An internal error occurred. Please try again later.");
+            masked.name = "StreamError";
+            controller.error(masked);
+          } else {
+            controller.error(err);
           }
-          controller.error(err);
         }
       },
       cancel: async () => {

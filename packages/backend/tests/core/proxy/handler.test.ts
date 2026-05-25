@@ -562,6 +562,112 @@ describe("ProxyHandler", () => {
     });
   });
 
+  describe("error masking", () => {
+    test("provider error with sensitive info is masked from client response", async () => {
+      const sensitiveResponse = new Response(
+        JSON.stringify({
+          error: {
+            message: "Invalid API key sk-proj-abc123DEF456 provided at https://internal-api.corp.example.com/v2/models",
+            type: "authentication_error",
+            code: "invalid_api_key",
+          },
+        }),
+        { status: 401, headers: { "Content-Type": "application/json" } },
+      );
+
+      const fetchFn = createMockFetch([sensitiveResponse]);
+      const handler = buildHandler([realModelOpenAI], [providerOpenAI], fetchFn);
+
+      const result = await handler.handle({
+        model: "gpt-4",
+        messages: [{ role: "user", content: "Hi" }],
+        stream: false,
+      });
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+
+      expect(result.error.message).not.toContain("sk-proj-abc123DEF456");
+      expect(result.error.message).not.toContain("internal-api.corp.example.com");
+      expect(result.error.message).not.toContain("Invalid API key");
+      expect(result.error.correlationId).toBeDefined();
+      expect(result.error.correlationId!.length).toBeGreaterThan(0);
+    });
+
+    test("provider error with sensitive info is logged server-side with full details", async () => {
+      const sensitiveMessage = "Authentication failed: key sk-live-DEADBEEF for https://api.openai.internal/v1";
+      const sensitiveResponse = new Response(
+        JSON.stringify({
+          error: {
+            message: sensitiveMessage,
+            type: "authentication_error",
+            code: "invalid_api_key",
+          },
+        }),
+        { status: 401, headers: { "Content-Type": "application/json" } },
+      );
+
+      const logs: unknown[] = [];
+      const fetchFn = createMockFetch([sensitiveResponse]);
+      const handler = buildHandler([realModelOpenAI], [providerOpenAI], fetchFn, (l) => logs.push(l));
+
+      await handler.handle({
+        model: "gpt-4",
+        messages: [{ role: "user", content: "Hi" }],
+        stream: false,
+      });
+
+      expect(logs.length).toBe(1);
+      const log = logs[0] as Record<string, unknown>;
+      expect(log.error).toContain("sk-live-DEADBEEF");
+      expect(log.error).toContain("api.openai.internal");
+      expect(log.correlationId).toBeDefined();
+      expect(log.providerErrorCode).toBe("invalid_api_key");
+    });
+
+    test("network error message is masked from client but logged server-side", async () => {
+      const fetchFn = (() => {
+        throw new TypeError("Connection refused to https://db-internal.corp.local:5432");
+      }) as unknown as typeof fetch;
+
+      const logs: unknown[] = [];
+      const handler = buildHandler([realModelOpenAI], [providerOpenAI], fetchFn, (l) => logs.push(l));
+
+      const result = await handler.handle({
+        model: "gpt-4",
+        messages: [{ role: "user", content: "Hi" }],
+        stream: false,
+      });
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+
+      expect(result.error.message).not.toContain("db-internal.corp.local");
+      expect(result.error.message).not.toContain("5432");
+      expect(result.error.correlationId).toBeDefined();
+
+      const log = logs[0] as Record<string, unknown>;
+      expect(log.error).toContain("db-internal.corp.local");
+      expect(log.error).toContain("5432");
+    });
+
+    test("all client-facing errors contain correlation ID", async () => {
+      const fetchFn = createMockFetch([rateLimitResponse()]);
+      const handler = buildHandler([realModelOpenAI], [providerOpenAI], fetchFn);
+
+      const result = await handler.handle({
+        model: "gpt-4",
+        messages: [{ role: "user", content: "Hi" }],
+        stream: false,
+      });
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error.correlationId).toBeDefined();
+      expect(result.error.correlationId!.length).toBeGreaterThan(0);
+    });
+  });
+
   describe("SSE output format validation", () => {
     test("stream output is valid OpenAI SSE format", async () => {
       const fetchFn = createMockFetch([

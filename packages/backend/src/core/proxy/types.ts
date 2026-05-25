@@ -30,4 +30,6 @@ export type RequestLogData = {
   tokens?: TokenUsage;
   error?: string;
   endpointId?: string;
+  correlationId?: string;
+  providerErrorCode?: string;
 };

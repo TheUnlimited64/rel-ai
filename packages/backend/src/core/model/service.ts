@@ -324,23 +324,13 @@ export function updateModel(
   return deserializeModel(row);
 }
 
-export class HasDependentsError extends Error {
-  readonly dependents: string[];
-  constructor(dependents: string[]) {
-    super("HAS_DEPENDENTS");
-    this.name = "HasDependentsError";
-    this.dependents = dependents;
-  }
-}
-
 export function deleteModel(db: DbClient, id: string): { success: boolean } {
   const existing = db.select().from(models).where(eq(models.id, id)).get();
   if (!existing) throw new Error("NOT_FOUND");
 
-  // Check for dependents
   const dependents = getDependents(db, id);
   if (dependents.length > 0) {
-    throw new HasDependentsError(dependents);
+    throw new Error(`HAS_DEPENDENTS:${JSON.stringify(dependents)}`);
   }
 
   db.transaction((tx) => {
