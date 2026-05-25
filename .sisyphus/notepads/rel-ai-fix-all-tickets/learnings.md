@@ -46,3 +46,10 @@
 - Test: use random ports (30xxx range) to avoid EADDRINUSE; use `triggerShutdown()` instead of `process.kill()` to avoid killing test runner
 - Async fetch handling: check `result instanceof Promise` — sync responses decrement immediately, async use `.finally()`
 - 2 pre-existing handler test failures (abort signal propagation) — NOT caused by this change
+
+## T084 — Frozen-lockfile CI check
+- No `.github/workflows/` existed; created from scratch
+- CI config: `.github/workflows/ci.yml` — checkout → setup-bun → `bun install --frozen-lockfile` → lint → typecheck → test
+- `bun install --frozen-lockfile` verified locally: 594 installs, no changes needed
+- bun 1.3.14 supports `--frozen-lockfile` flag
+- Ticket also asks for README CI requirement doc — skipped since no README exists and task says "if CI file exists, just add check"
