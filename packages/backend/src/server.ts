@@ -16,7 +16,7 @@ import { migratePlaintextApiKeys } from "./core/provider/migrate.js";
 import { OpenAIAdapter } from "./adapters/openai/adapter.js";
 import { AnthropicAdapter } from "./adapters/anthropic/adapter.js";
 import { PassthroughAdapter } from "./adapters/custom/index.js";
-import { generateToken } from "./core/auth/token.js";
+import { generateToken, maskToken } from "./core/auth/token.js";
 import { decrypt } from "./core/auth/encryption.js";
 import { resetEncryptionKey } from "./core/auth/encryption.js";
 import { authTokens } from "./db/schema/auth_tokens.js";
@@ -100,7 +100,7 @@ export function createApp(db: DbClient): Hono {
   // Async credential lookup
   async function getProviderCredentials(providerId: string): Promise<ProviderCredentials | null> {
     const provider = getProviderFromDb(providerId);
-    if (!provider) return null;
+    if (!provider || !provider.apiKey) return null;
 
     const apiKey = await decrypt(provider.apiKey);
     return { baseUrl: provider.baseUrl, apiKey };
@@ -159,7 +159,7 @@ export async function startServer(opts?: StartServerOptions): Promise<StartedSer
       if (row && row.count === 0) {
         const id = crypto.randomUUID();
         tx.insert(authTokens).values({ id, name: "Initial Admin Token", tokenHash: hash }).run();
-        console.log(`\n🔑 First-run admin token created: ${token}\n`);
+        console.log(`\n🔑 First-run admin token created: ${maskToken(token)}\n`);
       }
     });
   }

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
-import { generateToken, hashToken, validateToken } from "../../../src/core/auth/token.js";
+import { generateToken, hashToken, maskToken, validateToken } from "../../../src/core/auth/token.js";
 import { createMemoryDb } from "../../../src/db/connection.js";
 import { authTokens } from "../../../src/db/schema/auth_tokens.js";
 
@@ -71,5 +71,29 @@ describe("validateToken", () => {
 
     const after = db.select().from(authTokens).where(eq(authTokens.id, id)).get();
     expect(after!.lastUsedAt).not.toBeNull();
+  });
+});
+
+describe("maskToken", () => {
+  test("masks long token showing first 3 and last 4 chars", () => {
+    const masked = maskToken("abcdef1234567890abcdef1234567890");
+    expect(masked).toBe("abc****7890");
+  });
+
+  test("does not reveal full token content", () => {
+    const token = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2";
+    const masked = maskToken(token);
+    expect(masked).not.toContain(token);
+    expect(masked).not.toContain(token.slice(3, -4));
+  });
+
+  test("returns **** for tokens 7 chars or shorter", () => {
+    expect(maskToken("abcdefg")).toBe("****");
+    expect(maskToken("abc")).toBe("****");
+    expect(maskToken("")).toBe("****");
+  });
+
+  test("masks exactly at 8 char boundary", () => {
+    expect(maskToken("abcdefgh")).toBe("abc****efgh");
   });
 });

@@ -3,6 +3,15 @@ import type { DbClient } from "../../db/connection.js";
 import { eq } from "drizzle-orm";
 
 /**
+ * Mask a token for safe logging. Shows first 3 and last 4 characters,
+ * replacing the middle with "****". Tokens shorter than 8 chars show "****".
+ */
+export function maskToken(token: string): string {
+  if (token.length <= 7) return "****";
+  return token.slice(0, 3) + "****" + token.slice(-4);
+}
+
+/**
  * Generate a cryptographically secure random token and its SHA-256 hash.
  * Token is 32 bytes hex-encoded (64 chars).
  */
