@@ -319,4 +319,45 @@ describe("Endpoints CRUD", () => {
     const caller = createCaller();
     await expect(caller.endpoints.getModels({ id: "non-existent-id" })).rejects.toThrow("NOT_FOUND");
   });
+
+  test("list returns correct model counts with JOIN query", async () => {
+    const caller = createCaller();
+    const providerId = insertProvider(db);
+    const model1 = insertModel(db, providerId);
+    const model2 = insertModel(db, providerId);
+    const model3 = insertModel(db, providerId);
+
+    // Endpoint with 0 models
+    await caller.endpoints.create({
+      name: "Zero Models",
+      path: "zero-models",
+      modelIds: [],
+    });
+
+    // Endpoint with 1 model
+    const ep1 = await caller.endpoints.create({
+      name: "One Model",
+      path: "one-model",
+      modelIds: [model1],
+    });
+
+    // Endpoint with 3 models
+    const ep3 = await caller.endpoints.create({
+      name: "Three Models",
+      path: "three-models",
+      modelIds: [model1, model2, model3],
+    });
+
+    const list = await caller.endpoints.list();
+    expect(list.length).toBe(3);
+
+    const zero = list.find((e) => e.name === "Zero Models")!;
+    expect(zero.modelCount).toBe(0);
+
+    const one = list.find((e) => e.id === ep1.id)!;
+    expect(one.modelCount).toBe(1);
+
+    const three = list.find((e) => e.id === ep3.id)!;
+    expect(three.modelCount).toBe(3);
+  });
 });

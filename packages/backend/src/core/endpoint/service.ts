@@ -1,4 +1,4 @@
-import { eq, and, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { generateToken } from "../auth/token.js";
 import { endpoints } from "../../db/schema/endpoints.js";
 import { endpointModels } from "../../db/schema/endpoint_models.js";
@@ -102,29 +102,33 @@ export async function createEndpoint(
 }
 
 export async function listEndpoints(db: DbClient): Promise<EndpointListResponse[]> {
-  const rows = db.select().from(endpoints).all();
+  const rows = db
+    .select({
+      id: endpoints.id,
+      name: endpoints.name,
+      path: endpoints.path,
+      enabled: endpoints.enabled,
+      createdAt: endpoints.createdAt,
+      updatedAt: endpoints.updatedAt,
+      modelCount: sql<number>`count(${endpointModels.modelId})`,
+    })
+    .from(endpoints)
+    .leftJoin(endpointModels, eq(endpoints.id, endpointModels.endpointId))
+    .groupBy(endpoints.id)
+    .all();
 
-  const results: EndpointListResponse[] = [];
-  for (const row of rows) {
-    const countResult = db
-      .select({ count: sql<number>`count(*)` })
-      .from(endpointModels)
-      .where(eq(endpointModels.endpointId, row.id))
-      .get()!;
+  const proxyBase = getProxyBase();
 
-    results.push({
-      id: row.id,
-      name: row.name,
-      path: row.path,
-      enabled: row.enabled,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-      modelCount: Number(countResult.count),
-      proxyBase: getProxyBase(),
-    });
-  }
-
-  return results;
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    path: row.path,
+    enabled: row.enabled,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    modelCount: Number(row.modelCount),
+    proxyBase,
+  }));
 }
 
 export async function getEndpoint(
