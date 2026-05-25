@@ -314,14 +314,52 @@ export class ProxyHandler {
 
     let streamClosed = false;
     const stream = new ReadableStream<Uint8Array>({
-      pull: async (controller) => {
-        try {
-          const { done, value } = await reader.read();
-          debugLog("stream-read", { done, bytes: value?.length ?? 0 });
-          if (done) {
+      start: (controller) => {
+        // Push-based pump: continuously read upstream and enqueue downstream.
+        // This avoids the pull() backpressure bug where pull() is never re-invoked
+        // after returning without enqueuing (e.g. when start/start-step produce null).
+        const pump = async () => {
+          try {
+            for (;;) {
+              const { done, value } = await reader.read();
+              debugLog("stream-read", { done, bytes: value?.length ?? 0 });
+              if (done) break;
+
+              buffer += decoder.decode(value, { stream: true });
+              debugLog("stream-raw", { bufferPreview: buffer.slice(0, 500), bufferLen: buffer.length });
+              const delimiter = adapter.streamDelimiter ?? "\n\n";
+              const parts = buffer.split(delimiter);
+              debugLog("stream-split", { delimiter: JSON.stringify(delimiter), partsCount: parts.length, bufferLen: buffer.length });
+              // Keep last incomplete part in buffer
+              buffer = parts.pop() ?? "";
+
+              for (const part of parts) {
+                if (!part.trim()) continue;
+                const parsed = adapter.parseSSEChunk(part);
+                debugLog("stream-chunk", { partLen: part.length, parsed: parsed ? { content: !!parsed.content, done: parsed.done, thinking: !!parsed.thinking, toolCalls: !!parsed.tool_calls } : null });
+                if (!parsed) continue;
+
+                if (parsed.usage) {
+                  totalUsage = mergeUsage(totalUsage, parsed.usage);
+                }
+
+                if (parsed.done) {
+                  if (parsed.finish_reason) lastFinishReason = parsed.finish_reason;
+                  continue;
+                }
+
+                if (parsed.finish_reason) lastFinishReason = parsed.finish_reason;
+
+                if (parsed.content || parsed.thinking || parsed.tool_calls || parsed.finish_reason) {
+                  const chunk = formatStreamChunk(id, providerModel, parsed);
+                  controller.enqueue(textEncoder.encode(chunk));
+                }
+              }
+            }
+
+            // Stream finished — flush remaining buffer
             if (streamClosed) return;
             streamClosed = true;
-            // Flush remaining buffer
             try {
               if (buffer.trim()) {
                 const parsed = adapter.parseSSEChunk(buffer);
@@ -339,7 +377,7 @@ export class ProxyHandler {
                 }
               }
             } catch {
-              // Best-effort flush — don't let flush errors break the close
+              // Best-effort flush
             }
             // Send final chunk with done
             try {
@@ -366,71 +404,43 @@ export class ProxyHandler {
               tokens: totalUsage,
               endpointId,
             });
-            return;
-          }
-
-          buffer += decoder.decode(value, { stream: true });
-          debugLog("stream-raw", { bufferPreview: buffer.slice(0, 500), bufferLen: buffer.length });
-          const delimiter = adapter.streamDelimiter ?? "\n\n";
-          const parts = buffer.split(delimiter);
-          debugLog("stream-split", { delimiter: JSON.stringify(delimiter), partsCount: parts.length, bufferLen: buffer.length });
-          // Keep last incomplete part in buffer
-          buffer = parts.pop() ?? "";
-
-          for (const part of parts) {
-            if (!part.trim()) continue;
-            const parsed = adapter.parseSSEChunk(part);
-            debugLog("stream-chunk", { partLen: part.length, parsed: parsed ? { content: !!parsed.content, done: parsed.done, thinking: !!parsed.thinking, toolCalls: !!parsed.tool_calls } : null });
-            if (!parsed) continue;
-
-            if (parsed.usage) {
-              totalUsage = mergeUsage(totalUsage, parsed.usage);
-            }
-
-            if (parsed.done) {
-              if (parsed.finish_reason) lastFinishReason = parsed.finish_reason;
-              continue;
-            }
-
-            if (parsed.finish_reason) lastFinishReason = parsed.finish_reason;
-
-            if (parsed.content || parsed.thinking || parsed.tool_calls || parsed.finish_reason) {
-              const chunk = formatStreamChunk(id, providerModel, parsed);
-              controller.enqueue(textEncoder.encode(chunk));
+          } catch (err) {
+            debugLog("stream-error", { message: err instanceof Error ? err.message : String(err), stack: err instanceof Error ? err.stack : undefined });
+            if (!hadError) {
+              hadError = true;
+              void reader.cancel();
+              const correlationId = generateCorrelationId();
+              const rawMsg = err instanceof Error ? err.message : "Stream error";
+              this.emitLog({
+                model,
+                providerId,
+                providerModel,
+                adapterType,
+                stream: isStream,
+                status: 500,
+                durationMs: performance.now() - start,
+                error: rawMsg,
+                endpointId,
+                correlationId,
+              });
+              const masked = new Error("An internal error occurred. Please try again later.");
+              masked.name = "StreamError";
+              controller.error(masked);
+            } else {
+              controller.error(err);
             }
           }
-        } catch (err) {
-          debugLog("stream-error", { message: err instanceof Error ? err.message : String(err), stack: err instanceof Error ? err.stack : undefined });
-          if (!hadError) {
-            hadError = true;
-            void reader.cancel();
-            const correlationId = generateCorrelationId();
-            const rawMsg = err instanceof Error ? err.message : "Stream error";
-            this.emitLog({
-              model,
-              providerId,
-              providerModel,
-              adapterType,
-              stream: isStream,
-              status: 500,
-              durationMs: performance.now() - start,
-              error: rawMsg,
-              endpointId,
-              correlationId,
-            });
-            const masked = new Error("An internal error occurred. Please try again later.");
-            masked.name = "StreamError";
-            controller.error(masked);
-          } else {
-            controller.error(err);
-          }
-        }
+        };
+        void pump();
       },
       cancel: async () => {
         if (streamClosed) return;
         streamClosed = true;
-        abortController?.abort();
-        await reader.cancel();
+        try {
+          await reader.cancel();
+        } catch {
+          // Ignore cancel errors
+        }
       },
     });
 
