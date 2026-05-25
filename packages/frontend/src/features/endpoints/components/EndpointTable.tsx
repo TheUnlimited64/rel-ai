@@ -7,6 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 interface EndpointTableProps {
   endpoints: EndpointListResponse[];
   onToggle: (ep: EndpointListResponse) => void;
+  toggleIsPending: boolean;
   onDelete: (id: string) => void;
   onClickRow: (id: string) => void;
 }
@@ -15,7 +16,7 @@ function copyUrl(proxyBase: string, path: string) {
   navigator.clipboard.writeText(`${proxyBase}/${path}/chat/completions`);
 }
 
-export function EndpointTable({ endpoints, onToggle, onDelete, onClickRow }: EndpointTableProps) {
+export function EndpointTable({ endpoints, onToggle, toggleIsPending, onDelete, onClickRow }: EndpointTableProps) {
   if (endpoints.length === 0) {
     return <p className="py-8 text-center text-muted-foreground">No endpoints configured. Add one to get started.</p>;
   }
@@ -43,6 +44,7 @@ export function EndpointTable({ endpoints, onToggle, onDelete, onClickRow }: End
               <Switch
                 checked={ep.enabled}
                 onCheckedChange={() => onToggle(ep)}
+                disabled={toggleIsPending}
                 onClick={(e) => e.stopPropagation()}
               />
             </TableCell>

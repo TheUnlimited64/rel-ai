@@ -11,7 +11,7 @@ import { EndpointTokenRevealDialog } from "./components/EndpointTokenRevealDialo
 import type { EndpointCreateResponse } from "./api";
 
 export function EndpointsPage() {
-  const { endpoints, loading, error, reload, toggleEnabled, remove, deleteMutation } = useEndpoints();
+  const { endpoints, loading, error, reload, toggleEnabled, toggleIsPending, remove, deleteMutation } = useEndpoints();
   const [showCreate, setShowCreate] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [createdEndpoint, setCreatedEndpoint] = useState<EndpointCreateResponse | null>(null);
@@ -58,7 +58,7 @@ export function EndpointsPage() {
       <Card>
         <CardHeader><CardTitle>Configured Endpoints</CardTitle></CardHeader>
         <CardContent>
-          <EndpointTable endpoints={endpoints} onToggle={toggleEnabled} onDelete={setDeleteId} onClickRow={(id) => navigate(`/endpoints/${id}`)} />
+          <EndpointTable endpoints={endpoints} onToggle={toggleEnabled} toggleIsPending={toggleIsPending} onDelete={setDeleteId} onClickRow={(id) => navigate(`/endpoints/${id}`)} />
         </CardContent>
       </Card>
       <Dialog open={showCreate} onOpenChange={setShowCreate}>

@@ -120,4 +120,37 @@ describe("useEndpoints", () => {
     expect(mod._mocks.mockGetInvalidate).toHaveBeenCalled();
     expect(mod._mocks.mockSetData).not.toHaveBeenCalled();
   });
+
+  it("exposes toggleIsPending from mutation", () => {
+    const { result } = renderHook(() => useEndpoints(), {
+      wrapper: ({ children }) => <div>{children}</div>,
+    });
+    expect(result.current.toggleIsPending).toBe(false);
+  });
+
+  it("rapid toggleEnabled calls are suppressed by isPending guard", async () => {
+    const { result } = renderHook(() => useEndpoints(), {
+      wrapper: ({ children }) => <div>{children}</div>,
+    });
+
+    const ep = result.current.endpoints[0]!;
+    const mod = await import("@/lib/trpc");
+    const mockFn = vi.mocked(mod.trpcReact.endpoints.update.useMutation);
+    const mutationResult = mockFn.mock.results[0]?.value as { mutate: ReturnType<typeof vi.fn> };
+    mutationResult.mutate.mockClear();
+
+    act(() => {
+      result.current.toggleEnabled(ep);
+    });
+
+    expect(mutationResult.mutate).toHaveBeenCalledTimes(1);
+    expect(mutationResult.mutate).toHaveBeenCalledWith({
+      id: "1",
+      enabled: false,
+    });
+
+    expect(typeof result.current.toggleIsPending).toBe("boolean");
+
+    mutationResult.mutate.mockRestore();
+  });
 });

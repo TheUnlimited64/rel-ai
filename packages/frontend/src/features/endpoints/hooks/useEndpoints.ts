@@ -29,6 +29,7 @@ export function useEndpoints() {
     error: query.error?.message ?? null,
     reload: () => utils.endpoints.list.invalidate(),
     toggleEnabled: (ep: EndpointListResponse) => toggleMutation.mutate({ id: ep.id, enabled: !ep.enabled }),
+    toggleIsPending: toggleMutation.isPending,
     remove,
     toggleMutation,
     deleteMutation,
