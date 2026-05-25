@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
+import { cors } from "hono/cors";
 import { trpcServer } from "@hono/trpc-server";
 import { appRouter } from "./api/router.js";
 import { createContextFactory } from "./api/context.js";
@@ -123,7 +124,22 @@ export function createApp(db: DbClient): Hono {
 
   const app = new Hono();
 
+  // CORS for admin API: restrict to same-origin or explicit allowlist
+  const adminOrigins = process.env.CORS_ORIGINS ?? "";
+  app.use("/api/trpc/*", cors({
+    origin: adminOrigins ? adminOrigins.split(",").map((o) => o.trim()) : "",
+    allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowHeaders: ["Content-Type", "Authorization"],
+  }));
+
   app.use("/api/trpc/*", trpcServer({ router: appRouter, createContext }));
+
+  // CORS for proxy routes: allow all origins (API consumers need cross-origin access)
+  app.use("/v1/*", cors({
+    origin: "*",
+    allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowHeaders: ["Content-Type", "Authorization"],
+  }));
 
   app.get("/health", (c) => c.json({ status: "ok", version: VERSION }));
 
