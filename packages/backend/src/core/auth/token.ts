@@ -42,7 +42,7 @@ export function extractBearerToken(
 ): string | null {
   if (!header) return null;
   const match = /^Bearer (\S+)$/.exec(header);
-  return match ? match[1] : null;
+  return match ? match[1] ?? null : null;
 }
 
 /**

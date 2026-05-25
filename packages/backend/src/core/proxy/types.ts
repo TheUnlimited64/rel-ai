@@ -7,6 +7,7 @@ export type ProxyRequest = {
   overrides?: Record<string, unknown>;
   endpointId?: string;
   requestId?: string;
+  signal?: AbortSignal;
 };
 
 export type ProxyResult =
