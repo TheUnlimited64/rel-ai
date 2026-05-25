@@ -185,6 +185,7 @@ describe("AnthropicAdapter", () => {
       const result = adapter.parseSSEChunk(chunk);
       expect(result).toEqual({
         done: false,
+        finish_reason: "stop",
         usage: { promptTokens: 0, completionTokens: 42 },
       });
     });
