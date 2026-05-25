@@ -203,6 +203,31 @@ describe("RequestLogger", () => {
     expect(remaining.length).toBe(1);
     expect(remaining[0]!.requestedModel).toBe("new-model");
   });
+
+  test("purgeOldLogs uses parameterized query — no sql.raw injection", () => {
+    // Even with NaN or unusual numbers, purge must not throw or corrupt data
+    const purgeLogger = new RequestLogger(db, 0);
+
+    db.insert(requestLogs).values({
+      id: crypto.randomUUID(),
+      requestedModel: "recent-model",
+      latencyMs: 10,
+      status: "success",
+      createdAt: new Date().toISOString(),
+    }).run();
+
+    // 0-day retention: should delete everything older than today
+    expect(() => purgeLogger.purgeOldLogs()).not.toThrow();
+
+    // Verify no sql.raw remains in the module source
+    const fs = require("fs") as typeof import("fs");
+    const path = require("path") as typeof import("path");
+    const src = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../../../src/core/logging/logger.ts"),
+      "utf-8",
+    );
+    expect(src).not.toContain("sql.raw");
+  });
 });
 
 describe("RequestLogQuery", () => {

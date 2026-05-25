@@ -1,4 +1,4 @@
-import { eq, lt, sql } from "drizzle-orm";
+import { lt } from "drizzle-orm";
 import { requestLogs } from "../../db/schema/request_logs.js";
 import type { DbClient } from "../../db/connection.js";
 import type { RequestLogData } from "../proxy/types.js";
@@ -65,10 +65,12 @@ export class RequestLogger {
 
   /** Remove logs older than retention period. */
   purgeOldLogs(): void {
-    const cutoffExpr = sql`(datetime('now', '-${sql.raw(String(this.retentionDays))} days'))`;
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - this.retentionDays);
+    const cutoffIso = cutoff.toISOString();
     this.db
       .delete(requestLogs)
-      .where(lt(requestLogs.createdAt, cutoffExpr))
+      .where(lt(requestLogs.createdAt, cutoffIso))
       .run();
   }
 }
