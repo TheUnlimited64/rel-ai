@@ -12,8 +12,8 @@ COPY packages/backend/package.json packages/backend/
 RUN bun install --frozen-lockfile
 
 # Copy frontend source and build
-RUN cd packages/shared && bun install --frozen-lockfile 2>/dev/null || true
-RUN cd packages/frontend && bun install --frozen-lockfile 2>/dev/null || true
+RUN cd packages/shared && bun install --frozen-lockfile
+RUN cd packages/frontend && bun install --frozen-lockfile
 
 COPY tsconfig.base.json ./
 COPY packages/backend/src/ packages/backend/src/
@@ -28,10 +28,11 @@ FROM oven/bun:1.3.14-alpine
 
 WORKDIR /app
 
+ENV NODE_ENV=production
+
 # Install production dependencies only
 COPY package.json bun.lock ./
 COPY packages/shared/package.json packages/shared/
-COPY packages/frontend/package.json packages/frontend/
 COPY packages/backend/package.json packages/backend/
 RUN bun install --frozen-lockfile --production
 
@@ -49,5 +50,8 @@ COPY --from=frontend-build /app/packages/frontend/dist/ packages/backend/public/
 COPY packages/backend/src/db/migrations/ packages/backend/src/db/migrations/
 
 EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget -qO- http://localhost:3000/health || exit 1
 
 CMD ["bun", "run", "start"]

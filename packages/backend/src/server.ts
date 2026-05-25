@@ -183,9 +183,9 @@ export async function startServer(opts?: StartServerOptions): Promise<StartedSer
     });
   }
 
-  // Production ENCRYPTION_KEY warning
-  if (process.env.NODE_ENV === "production" && !process.env.ENCRYPTION_KEY) {
-    console.warn("⚠️ Running in production without ENCRYPTION_KEY set. Keys will not persist across restarts.");
+  // Production ENCRYPTION_KEY warning (backup — encryption.ts throws on first use if missing)
+  if (process.env.NODE_ENV === "production" && !process.env.ENCRYPTION_KEY && !process.env.ENCRYPTION_KEY_FILE) {
+    console.warn("⚠️ Running in production without ENCRYPTION_KEY or ENCRYPTION_KEY_FILE. Server will fail on first encryption/decryption attempt.");
   }
 
   const app = createApp(db);
@@ -212,7 +212,8 @@ export async function startServer(opts?: StartServerOptions): Promise<StartedSer
     return result;
   };
 
-  const server = Bun.serve({ fetch: wrappedFetch, port });
+  const hostname = process.env.HOST || "127.0.0.1";
+  const server = Bun.serve({ fetch: wrappedFetch, port, hostname });
 
   let shutdownStarted = false;
   async function gracefulShutdown(signal: string) {

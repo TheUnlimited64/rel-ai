@@ -5,10 +5,15 @@ const KEY_FILE_PATH = process.env.DATA_DIR
   : "./data/.encryption_key";
 
 /**
- * Get or create the AES-256-GCM encryption key from ENCRYPTION_KEY env var.
- * If not set, tries to read from a persistent key file.
- * If file doesn't exist, generates a new key, writes it to the file, and logs a warning.
- * Falls back to ephemeral in-memory key if file write fails (non-Docker dev).
+ * Get or create the AES-256-GCM encryption key.
+ *
+ * Sources checked in order:
+ * 1. ENCRYPTION_KEY env var
+ * 2. ENCRYPTION_KEY_FILE env var (Docker secrets / file-based mounting)
+ * 3. Persistent key file at DATA_DIR/.encryption_key (dev only)
+ * 4. Auto-generate ephemeral key (dev only, warns)
+ *
+ * In production (NODE_ENV=production): hard failure if no key found.
  */
 async function getOrCreateEncryptionKey(): Promise<CryptoKey> {
   if (_encryptionKey) return _encryptionKey;
@@ -18,6 +23,16 @@ async function getOrCreateEncryptionKey(): Promise<CryptoKey> {
 
   if (envKey) {
     keyMaterial = envKey;
+  } else if (process.env.ENCRYPTION_KEY_FILE) {
+    // Docker secrets / file-based secret mounting
+    try {
+      const fs = await import("node:fs");
+      keyMaterial = fs.readFileSync(process.env.ENCRYPTION_KEY_FILE, "utf-8").trim();
+    } catch (err) {
+      throw new Error(
+        `[rel-ai] ENCRYPTION_KEY_FILE is set to "${process.env.ENCRYPTION_KEY_FILE}" but file could not be read: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   } else {
     // Try to read persisted key from file
     let persistedKey: string | null = null;
@@ -44,6 +59,12 @@ async function getOrCreateEncryptionKey(): Promise<CryptoKey> {
 
     if (persistedKey) {
       keyMaterial = persistedKey;
+    } else if (process.env.NODE_ENV === "production") {
+      throw new Error(
+        "[rel-ai] ENCRYPTION_KEY or ENCRYPTION_KEY_FILE must be set in production. " +
+          "Without a persistent key, encrypted data will not survive restarts. " +
+          "Set ENCRYPTION_KEY env var or mount a secrets file via ENCRYPTION_KEY_FILE.",
+      );
     } else {
       keyMaterial = crypto.randomUUID() + crypto.randomUUID();
       // Try to persist the generated key

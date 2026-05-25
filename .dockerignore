@@ -1,0 +1,11 @@
+node_modules
+.env
+.env.*
+*.db*
+test-results
+playwright-report
+.tickets
+.sisyphus
+.git
+.gitignore
+.svelte-kit

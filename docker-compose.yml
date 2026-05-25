@@ -2,12 +2,32 @@ services:
   rel-ai:
     build: .
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     volumes:
       - rel-ai-data:/app/data
+      - ./secrets/encryption_key:/run/secrets/encryption_key:ro
     environment:
-      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - NODE_ENV=production
+      - ENCRYPTION_KEY_FILE=/run/secrets/encryption_key
       - PROXY_BASE_URL=${PROXY_BASE_URL}
+      - HOST=0.0.0.0
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   rel-ai-data:
