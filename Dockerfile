@@ -1,5 +1,6 @@
 # Stage 1: Build frontend
-FROM oven/bun:1 AS frontend-build
+# Pinned: oven/bun:1.3.14-alpine (2025-05-25). Update by: bun --version → update tag → rebuild
+FROM oven/bun:1.3.14-alpine AS frontend-build
 
 WORKDIR /app
 
@@ -22,7 +23,8 @@ COPY packages/frontend/ packages/frontend/
 RUN cd packages/frontend && bun run build
 
 # Stage 2: Production image
-FROM oven/bun:1
+# Pinned: oven/bun:1.3.14-alpine (2025-05-25). Update by: bun --version → update tag → rebuild
+FROM oven/bun:1.3.14-alpine
 
 WORKDIR /app
 
