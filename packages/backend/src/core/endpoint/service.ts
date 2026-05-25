@@ -62,20 +62,22 @@ export async function createEndpoint(
   const id = crypto.randomUUID();
 
   try {
-    db.transaction((tx) => {
-      tx.insert(endpoints)
-        .values({
-          id,
-          name: input.name,
-          path: input.path,
-          tokenHash: hash,
-        })
-        .run();
+  // Synchronous DB call blocks the event loop — acceptable for homelab scale where concurrency is low
+  // TODO: Migrate to async drizzle queries for production scale
+  db.transaction((tx) => {
+    tx.insert(endpoints)
+      .values({
+        id,
+        name: input.name,
+        path: input.path,
+        tokenHash: hash,
+      })
+      .run();
 
-      for (const modelId of input.modelIds) {
-        tx.insert(endpointModels).values({ endpointId: id, modelId }).run();
-      }
-    });
+    for (const modelId of input.modelIds) {
+      tx.insert(endpointModels).values({ endpointId: id, modelId }).run();
+    }
+  });
   } catch (err: unknown) {
     if (err instanceof Error && err.message?.includes("UNIQUE constraint")) {
       throw new Error("DUPLICATE_PATH");
@@ -183,17 +185,19 @@ export async function updateEndpoint(
   updates.updatedAt = now;
 
   try {
-    db.transaction((tx) => {
-      tx.update(endpoints).set(updates).where(eq(endpoints.id, input.id)).run();
+  // Synchronous DB call blocks the event loop — acceptable for homelab scale where concurrency is low
+  // TODO: Migrate to async drizzle queries for production scale
+  db.transaction((tx) => {
+    tx.update(endpoints).set(updates).where(eq(endpoints.id, input.id)).run();
 
-      // Update model associations if provided
-      if (input.modelIds !== undefined) {
-        tx.delete(endpointModels).where(eq(endpointModels.endpointId, input.id)).run();
-        for (const modelId of input.modelIds) {
-          tx.insert(endpointModels).values({ endpointId: input.id, modelId }).run();
-        }
+    // Update model associations if provided
+    if (input.modelIds !== undefined) {
+      tx.delete(endpointModels).where(eq(endpointModels.endpointId, input.id)).run();
+      for (const modelId of input.modelIds) {
+        tx.insert(endpointModels).values({ endpointId: input.id, modelId }).run();
       }
-    });
+    }
+  });
   } catch (err: unknown) {
     if (err instanceof Error && err.message?.includes("UNIQUE constraint")) {
       throw new Error("DUPLICATE_PATH");
@@ -211,7 +215,8 @@ export async function deleteEndpoint(
   const existing = db.select().from(endpoints).where(eq(endpoints.id, id)).get();
   if (!existing) throw new Error("NOT_FOUND");
 
-  // Junction entries cascade deleted by FK
+  // Synchronous DB call blocks the event loop — acceptable for homelab scale where concurrency is low
+  // TODO: Migrate to async drizzle queries for production scale
   db.delete(endpoints).where(eq(endpoints.id, id)).run();
 
   return { success: true };
@@ -227,6 +232,8 @@ export async function regenerateEndpointToken(
   const { token, hash } = await generateToken();
   const now = new Date().toISOString().replace("T", " ").split(".")[0]!;
 
+  // Synchronous DB call blocks the event loop — acceptable for homelab scale where concurrency is low
+  // TODO: Migrate to async drizzle queries for production scale
   db.update(endpoints)
     .set({ tokenHash: hash, updatedAt: now })
     .where(eq(endpoints.id, id))

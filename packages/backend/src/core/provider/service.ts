@@ -66,6 +66,8 @@ export async function createProvider(
   const configJson = input.config ? JSON.stringify(input.config) : null;
   const now = new Date().toISOString().replace("T", " ").split(".")[0]!;
 
+  // Synchronous DB call blocks the event loop — acceptable for homelab scale where concurrency is low
+  // TODO: Migrate to async drizzle queries for production scale
   db.insert(providers)
     .values({
       id,
@@ -128,6 +130,8 @@ export async function updateProvider(
   const now = new Date().toISOString().replace("T", " ").split(".")[0]!;
   updates.updatedAt = now;
 
+  // Synchronous DB call blocks the event loop — acceptable for homelab scale where concurrency is low
+  // TODO: Migrate to async drizzle queries for production scale
   db.update(providers).set(updates).where(eq(providers.id, input.id)).run();
 
   const row = db.select().from(providers).where(eq(providers.id, input.id)).get();
@@ -141,6 +145,8 @@ export async function deleteProvider(db: DbClient, id: string): Promise<{ succes
   if (!existing) throw new Error("NOT_FOUND");
 
   // Cascade delete related models in transaction
+  // Synchronous DB call blocks the event loop — acceptable for homelab scale where concurrency is low
+  // TODO: Migrate to async drizzle queries for production scale
   db.transaction((tx) => {
     tx.delete(models).where(eq(models.providerId, id)).run();
     tx.delete(providers).where(eq(providers.id, id)).run();
@@ -156,10 +162,15 @@ export async function regenerateApiKey(
   const row = db.select().from(providers).where(eq(providers.id, id)).get();
   if (!row) throw new Error("NOT_FOUND");
 
-  const rawKey = `sk_${crypto.randomUUID().replace(/-/g, "")}`;
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  const rawKey = `sk_${hex}`;
   const encryptedKey = await encrypt(rawKey);
   const now = new Date().toISOString().replace("T", " ").split(".")[0]!;
 
+  // Synchronous DB call blocks the event loop — acceptable for homelab scale where concurrency is low
+  // TODO: Migrate to async drizzle queries for production scale
   db.update(providers)
     .set({ apiKey: encryptedKey, updatedAt: now })
     .where(eq(providers.id, id))

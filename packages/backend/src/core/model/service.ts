@@ -143,6 +143,8 @@ export function createRealModel(
   if (existing) throw new Error("DUPLICATE_ID");
 
   const now = new Date().toISOString().replace("T", " ").split(".")[0]!;
+  // Synchronous DB call blocks the event loop — acceptable for homelab scale where concurrency is low
+  // TODO: Migrate to async drizzle queries for production scale
   db.transaction((tx) => {
     tx.insert(models)
       .values({
@@ -190,6 +192,8 @@ export function createVirtualFallbackModel(
   if (isCircular) throw new Error("CIRCULAR_DEPENDENCY");
 
   const now = new Date().toISOString().replace("T", " ").split(".")[0]!;
+  // Synchronous DB call blocks the event loop — acceptable for homelab scale where concurrency is low
+  // TODO: Migrate to async drizzle queries for production scale
   db.transaction((tx) => {
     tx.insert(models)
       .values({
@@ -226,6 +230,8 @@ export function createVirtualTunedModel(
   }
 
   const now = new Date().toISOString().replace("T", " ").split(".")[0]!;
+  // Synchronous DB call blocks the event loop — acceptable for homelab scale where concurrency is low
+  // TODO: Migrate to async drizzle queries for production scale
   db.transaction((tx) => {
     tx.insert(models)
       .values({
@@ -316,6 +322,8 @@ export function updateModel(
   const now = new Date().toISOString().replace("T", " ").split(".")[0]!;
   updates.updatedAt = now;
 
+  // Synchronous DB call blocks the event loop — acceptable for homelab scale where concurrency is low
+  // TODO: Migrate to async drizzle queries for production scale
   db.transaction((tx) => {
     tx.update(models).set(updates).where(eq(models.id, input.id)).run();
   });
@@ -333,6 +341,8 @@ export function deleteModel(db: DbClient, id: string): { success: boolean } {
     throw new Error(`HAS_DEPENDENTS:${JSON.stringify(dependents)}`);
   }
 
+  // Synchronous DB call blocks the event loop — acceptable for homelab scale where concurrency is low
+  // TODO: Migrate to async drizzle queries for production scale
   db.transaction((tx) => {
     tx.delete(models).where(eq(models.id, id)).run();
   });
