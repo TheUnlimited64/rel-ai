@@ -1,7 +1,12 @@
-import { describe, test, expect } from "bun:test";
-import { app } from "../../src/index.js";
+import { describe, test, expect, beforeAll } from "bun:test";
+import { initializeApp } from "../../src/index.js";
 
 const BASE = "http://localhost";
+let app: ReturnType<typeof initializeApp>["app"];
+
+beforeAll(() => {
+  ({ app } = initializeApp());
+});
 
 describe("tRPC API", () => {
   test("protected procedure blocks unauthenticated request", async () => {
