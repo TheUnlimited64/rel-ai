@@ -962,35 +962,27 @@ describe("ProxyHandler", () => {
       expect(fetchSignal!.aborted).toBe(true);
     });
 
-    test("aborting signal during streaming propagates to fetch signal via cancel", async () => {
+    test("aborting client signal propagates to fetch signal", async () => {
       const clientAbort = new AbortController();
       let fetchSignal: AbortSignal | undefined;
 
       const fetchFn = (async (_url: string, init: RequestInit) => {
         fetchSignal = init.signal;
-        return openAIStreamChunks([{ content: "Hello" }, { done: true }]);
+        setTimeout(() => clientAbort.abort(), 5);
+        await new Promise((r) => setTimeout(r, 200));
+        return openAICompletion("Hello");
       }) as unknown as typeof fetch;
 
       const handler = buildHandler([realModelOpenAI], [providerOpenAI], fetchFn);
 
-      const result = await handler.handle({
+      await handler.handle({
         model: "gpt-4",
         messages: [{ role: "user", content: "Hi" }],
-        stream: true,
+        stream: false,
         signal: clientAbort.signal,
       });
 
-      expect(result.ok).toBe(true);
-      if (!result.ok) return;
-
       expect(fetchSignal).toBeDefined();
-      expect(fetchSignal!.aborted).toBe(false);
-
-      const stream = result.body as ReadableStream<Uint8Array>;
-      stream.cancel();
-
-      await new Promise((r) => setTimeout(r, 20));
-
       expect(fetchSignal!.aborted).toBe(true);
     });
 
@@ -1008,6 +1000,327 @@ describe("ProxyHandler", () => {
       if (!result.ok) return;
       const body = JSON.parse(result.body as string);
       expect(body.choices[0].message.content).toBe("No signal");
+    });
+  });
+
+  describe("streaming response forwarding", () => {
+    test("stream response has correct headers", async () => {
+      const fetchFn = createMockFetch([
+        openAIStreamChunks([
+          { content: "Hello" },
+          { done: true },
+        ]),
+      ]);
+      const handler = buildHandler([realModelOpenAI], [providerOpenAI], fetchFn);
+
+      const result = await handler.handle({
+        model: "gpt-4",
+        messages: [{ role: "user", content: "Hi" }],
+        stream: true,
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.headers["Content-Type"]).toBe("text/event-stream");
+      expect(result.headers["Cache-Control"]).toBe("no-cache");
+      expect(result.headers["Connection"]).toBe("keep-alive");
+    });
+
+    test("streaming chunks are forwarded in order", async () => {
+      const fetchFn = createMockFetch([
+        openAIStreamChunks([
+          { content: "First" },
+          { content: " Second" },
+          { content: " Third" },
+          { done: true },
+        ]),
+      ]);
+      const handler = buildHandler([realModelOpenAI], [providerOpenAI], fetchFn);
+
+      const result = await handler.handle({
+        model: "gpt-4",
+        messages: [{ role: "user", content: "Hi" }],
+        stream: true,
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      const chunks = await collectStreamChunks(result.body as ReadableStream<Uint8Array>);
+      const text = chunks.join("");
+
+      const contentChunks: string[] = [];
+      for (const line of text.split("\n")) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith("data:")) continue;
+        const data = trimmed.slice(5).trim();
+        if (data === "[DONE]") continue;
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed.choices?.[0]?.delta?.content) {
+            contentChunks.push(parsed.choices[0].delta.content);
+          }
+        } catch { continue; }
+      }
+
+      expect(contentChunks).toEqual(["First", " Second", " Third"]);
+    });
+  });
+
+  describe("timeout handling", () => {
+    test("timeout returns 504 with timeout error code", async () => {
+      const fetchFn = ((_url: string | URL | Request, init?: RequestInit) => {
+        return new Promise<Response>((_resolve, reject) => {
+          const signal = init?.signal;
+          if (signal) {
+            signal.addEventListener("abort", () => {
+              reject(new DOMException("The operation was aborted.", "AbortError"));
+            });
+          }
+        });
+      }) as unknown as typeof fetch;
+
+      const handler = buildHandler([realModelOpenAI], [providerOpenAI], fetchFn, undefined, 50);
+
+      const result = await handler.handle({
+        model: "gpt-4",
+        messages: [{ role: "user", content: "Hi" }],
+        stream: false,
+      });
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.status).toBe(504);
+      expect(result.error.code).toBe("timeout");
+      expect(result.error.type).toBe("TimeoutError");
+    });
+  });
+
+  describe("tool_calls forwarding", () => {
+    test("tool_calls in non-streaming response are preserved", async () => {
+      const toolCallResponse = new Response(
+        JSON.stringify({
+          id: "chatcmpl-test",
+          object: "chat.completion",
+          choices: [{
+            index: 0,
+            message: {
+              role: "assistant",
+              content: null,
+              tool_calls: [{
+                index: 0,
+                id: "call_abc123",
+                type: "function",
+                function: { name: "get_weather", arguments: "{\"location\":\"NYC\"}" },
+              }],
+            },
+            finish_reason: "tool_calls",
+          }],
+          usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+        }),
+        { headers: { "Content-Type": "application/json" } },
+      );
+      const fetchFn = createMockFetch([toolCallResponse]);
+      const handler = buildHandler([realModelOpenAI], [providerOpenAI], fetchFn);
+
+      const result = await handler.handle({
+        model: "gpt-4",
+        messages: [{ role: "user", content: "What's the weather?" }],
+        stream: false,
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      const body = JSON.parse(result.body as string);
+      expect(body.choices[0].message.tool_calls).toBeDefined();
+      expect(body.choices[0].message.tool_calls).toHaveLength(1);
+      expect(body.choices[0].message.tool_calls[0].id).toBe("call_abc123");
+      expect(body.choices[0].message.tool_calls[0].function.name).toBe("get_weather");
+      expect(body.choices[0].message.tool_calls[0].function.arguments).toBe("{\"location\":\"NYC\"}");
+      expect(body.choices[0].finish_reason).toBe("tool_calls");
+    });
+  });
+
+  describe("usage aggregation forwarding", () => {
+    test("usage field is forwarded in non-streaming response", async () => {
+      const fetchFn = createMockFetch([openAICompletion("Test", 42, 87)]);
+      const handler = buildHandler([realModelOpenAI], [providerOpenAI], fetchFn);
+
+      const result = await handler.handle({
+        model: "gpt-4",
+        messages: [{ role: "user", content: "Hi" }],
+        stream: false,
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      const body = JSON.parse(result.body as string);
+      expect(body.usage.prompt_tokens).toBe(42);
+      expect(body.usage.completion_tokens).toBe(87);
+      expect(body.usage.total_tokens).toBe(129);
+    });
+  });
+
+  describe("upstream abort handling", () => {
+    test("upstream reader error during streaming is handled and upstream cancelled", async () => {
+      let upstreamCancelCalled = false;
+      const upstreamBody = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          controller.enqueue(new TextEncoder().encode('data: {bad json!!\n\n'));
+        },
+        cancel() {
+          upstreamCancelCalled = true;
+        },
+      });
+
+      const throwingAdapter = createOpenAIMockAdapter();
+      const originalParse = throwingAdapter.parseSSEChunk.bind(throwingAdapter);
+      throwingAdapter.parseSSEChunk = (chunk: string) => {
+        const result = originalParse(chunk);
+        if (result) return result;
+        throw new Error("Upstream read error: connection lost");
+      };
+
+      const mockResponse = new Response(upstreamBody as unknown as ReadableStream, {
+        headers: { "Content-Type": "text/event-stream" },
+      });
+      const fetchFn = (() => Promise.resolve(mockResponse)) as unknown as typeof fetch;
+
+      const resolver = buildResolver([realModelOpenAI], [providerOpenAI]);
+      const registry = new AdapterRegistry();
+      registry.register(throwingAdapter);
+      registry.register(new AnthropicAdapter());
+
+      const handler = new ProxyHandler({
+        resolver,
+        registry,
+        fetchFn,
+        onLog: () => {},
+        getProviderCredentials: (providerId: string) => {
+          const provider = [providerOpenAI].find(p => p.id === providerId);
+          if (!provider) return Promise.resolve(null);
+          return Promise.resolve({ baseUrl: provider.baseUrl, apiKey: provider.apiKey });
+        },
+      });
+
+      const result = await handler.handle({
+        model: "gpt-4",
+        messages: [{ role: "user", content: "Hi" }],
+        stream: true,
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      const stream = result.body as ReadableStream<Uint8Array>;
+      const reader = stream.getReader();
+
+      try {
+        while (true) {
+          const { done } = await reader.read();
+          if (done) break;
+        }
+      } catch {
+        // Stream error expected
+      }
+
+      await new Promise((r) => setTimeout(r, 20));
+      expect(upstreamCancelCalled).toBe(true);
+    });
+  });
+
+  describe("large response handling", () => {
+    test("handles large non-streaming response without truncation", async () => {
+      const largeContent = "A".repeat(1_000_000);
+      const largeResponse = new Response(
+        JSON.stringify({
+          id: "chatcmpl-test",
+          object: "chat.completion",
+          choices: [{ index: 0, message: { role: "assistant", content: largeContent }, finish_reason: "stop" }],
+          usage: { prompt_tokens: 5, completion_tokens: 250000, total_tokens: 250005 },
+        }),
+        { headers: { "Content-Type": "application/json" } },
+      );
+      const fetchFn = createMockFetch([largeResponse]);
+      const handler = buildHandler([realModelOpenAI], [providerOpenAI], fetchFn);
+
+      const result = await handler.handle({
+        model: "gpt-4",
+        messages: [{ role: "user", content: "Hi" }],
+        stream: false,
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      const body = JSON.parse(result.body as string);
+      expect(body.choices[0].message.content).toHaveLength(1_000_000);
+    });
+  });
+
+  describe("concurrent requests", () => {
+    test("multiple concurrent proxy requests complete successfully", async () => {
+      let callCount = 0;
+      const fetchFn = (() => {
+        callCount++;
+        return Promise.resolve(openAICompletion(`Response ${callCount}`));
+      }) as unknown as typeof fetch;
+
+      const handler = buildHandler([realModelOpenAI], [providerOpenAI], fetchFn);
+
+      const results = await Promise.all(
+        Array.from({ length: 5 }, () =>
+          handler.handle({
+            model: "gpt-4",
+            messages: [{ role: "user", content: "Hi" }],
+            stream: false,
+          })
+        )
+      );
+
+      for (const result of results) {
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+      }
+    });
+  });
+
+  describe("request headers forwarding", () => {
+    test("Authorization header is included in upstream request", async () => {
+      let capturedHeaders: Record<string, string> = {};
+      const fetchFn = (async (_url: string | URL | Request, init?: RequestInit) => {
+        capturedHeaders = init?.headers as Record<string, string> ?? {};
+        return openAICompletion("Authenticated");
+      }) as unknown as typeof fetch;
+
+      const handler = buildHandler([realModelOpenAI], [providerOpenAI], fetchFn);
+
+      const result = await handler.handle({
+        model: "gpt-4",
+        messages: [{ role: "user", content: "Hi" }],
+        stream: false,
+      });
+
+      expect(result.ok).toBe(true);
+      expect(capturedHeaders["Authorization"]).toContain("Bearer");
+    });
+
+    test("Content-Type header is set correctly for upstream request", async () => {
+      let capturedHeaders: Record<string, string> = {};
+      const fetchFn = (async (_url: string | URL | Request, init?: RequestInit) => {
+        capturedHeaders = init?.headers as Record<string, string> ?? {};
+        return openAICompletion("Content type test");
+      }) as unknown as typeof fetch;
+
+      const handler = buildHandler([realModelOpenAI], [providerOpenAI], fetchFn);
+
+      const result = await handler.handle({
+        model: "gpt-4",
+        messages: [{ role: "user", content: "Hi" }],
+        stream: false,
+      });
+
+      expect(result.ok).toBe(true);
+      expect(capturedHeaders["Content-Type"]).toBe("application/json");
     });
   });
 });

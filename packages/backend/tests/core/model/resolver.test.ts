@@ -217,4 +217,159 @@ describe("ModelResolver", () => {
     await new Promise((r) => setTimeout(r, 80));
     expect(resolver.isHealthy("p-a")).toBe(true);
   });
+
+  // --- New test cases ---
+
+  test("disabled provider (enabled: false) is NOT skipped by resolver — resolver only checks health, not enabled flag", () => {
+    const disabledProvider: Provider = {
+      id: "p-disabled",
+      name: "Disabled Provider",
+      adapterType: "openai",
+      baseUrl: "https://api.openai.com",
+      apiKey: "key-disabled",
+      enabled: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    const disabledModel: Model = {
+      id: "disabled-model",
+      displayName: "Disabled Model",
+      providerId: "p-disabled",
+      providerModel: "gpt-4-disabled",
+      type: "real",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    const resolver = buildResolver([disabledModel], [disabledProvider]);
+
+    // Resolver does not check provider.enabled — it resolves successfully
+    const result = resolver.resolve("disabled-model");
+    expect(result.providerId).toBe("p-disabled");
+    expect(result.providerModel).toBe("gpt-4-disabled");
+  });
+
+  test("unhealthyDuration window: provider within window is skipped, outside window is selected", async () => {
+    const resolver = new ModelResolver({
+      getModel: (id: string) => id === "real-1" ? realModel1 : undefined,
+      getProvider: (id: string) => id === "p-a" ? providerA : undefined,
+      unhealthyDuration: 80, // 80ms window
+    });
+
+    // Mark unhealthy, within window → skipped
+    resolver.markUnhealthy("p-a");
+    expect(resolver.isHealthy("p-a")).toBe(false);
+
+    // Wait for window to expire
+    await new Promise((r) => setTimeout(r, 100));
+    expect(resolver.isHealthy("p-a")).toBe(true);
+
+    // Now resolver should select this provider
+    const result = resolver.resolve("real-1");
+    expect(result.providerId).toBe("p-a");
+  });
+
+  test("deep circular detection: 2-hop A → B → A", () => {
+    const circA: Model = {
+      id: "circ-2hop-a",
+      displayName: "2-hop A",
+      type: "virtual",
+      variant: "fallback",
+      fallbackChain: ["circ-2hop-b"],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    const circB: Model = {
+      id: "circ-2hop-b",
+      displayName: "2-hop B",
+      type: "virtual",
+      variant: "fallback",
+      fallbackChain: ["circ-2hop-a"],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    const resolver = buildResolver([circA, circB], []);
+    expect(() => resolver.resolve("circ-2hop-a")).toThrow(CircularDependencyError);
+  });
+
+  test("deep circular detection: 3-hop A → B → C → A", () => {
+    const circA: Model = {
+      id: "circ-3hop-a",
+      displayName: "3-hop A",
+      type: "virtual",
+      variant: "fallback",
+      fallbackChain: ["circ-3hop-b"],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    const circB: Model = {
+      id: "circ-3hop-b",
+      displayName: "3-hop B",
+      type: "virtual",
+      variant: "fallback",
+      fallbackChain: ["circ-3hop-c"],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    const circC: Model = {
+      id: "circ-3hop-c",
+      displayName: "3-hop C",
+      type: "virtual",
+      variant: "fallback",
+      fallbackChain: ["circ-3hop-a"],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    const resolver = buildResolver([circA, circB, circC], []);
+    expect(() => resolver.resolve("circ-3hop-a")).toThrow(CircularDependencyError);
+  });
+
+  test("all providers down with no fallback → throws AllProvidersFailedError", () => {
+    const onlyModel: Model = {
+      id: "only-real",
+      displayName: "Only Model",
+      providerId: "p-a",
+      providerModel: "only-model",
+      type: "real",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    const resolver = buildResolver([onlyModel], [providerA]);
+    resolver.markUnhealthy("p-a");
+    // Real model with unhealthy provider → no fallback chain → lookup fails
+    // Since it's a real model (not virtual/fallback), the resolver finds the model,
+    // gets the provider, but provider is unhealthy — the resolver still returns successfully
+    // because resolve() for real models does NOT check health (health only checked in fallback chains).
+    // To test all providers down, we need a fallback model where all chain providers are unhealthy.
+    const fbModel: Model = {
+      id: "fb-only",
+      displayName: "FB Only",
+      type: "virtual",
+      variant: "fallback",
+      fallbackChain: ["only-real"],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    const fbResolver = buildResolver([onlyModel, fbModel], [providerA]);
+    fbResolver.markUnhealthy("p-a");
+    expect(() => fbResolver.resolve("fb-only")).toThrow(AllProvidersFailedError);
+  });
+
+  test("model not found with no tunings or fallbacks → throws ModelNotFoundError", () => {
+    const resolver = buildResolver([realModel1], [providerA]);
+    // Request a model that doesn't exist at all
+    expect(() => resolver.resolve("totally-nonexistent-model")).toThrow(ModelNotFoundError);
+  });
+
+  test("concurrent resolution returns consistent results", async () => {
+    const resolver = buildResolver([realModel1, realModel2, fallbackModel], [providerA, providerB]);
+    const promises = Array.from({ length: 10 }, () =>
+      Promise.resolve().then(() => resolver.resolve("fallback-1"))
+    );
+    const results = await Promise.all(promises);
+    for (const result of results) {
+      expect(result.providerId).toBe("p-a");
+      expect(result.providerModel).toBe("gpt-4");
+      expect(result.adapterType).toBe("openai");
+    }
+  });
 });
