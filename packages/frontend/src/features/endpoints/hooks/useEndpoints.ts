@@ -6,16 +6,9 @@ export function useEndpoints() {
   const utils = trpcHooks.useUtils();
 
   const toggleMutation = trpcHooks.endpoints.update.useMutation({
-    onSuccess: async (updated) => {
-      utils.endpoints.list.setData(undefined, (prev) =>
-        prev
-          ? prev.map((x) =>
-              x.id === updated.id
-                ? { ...updated, modelCount: updated.models.length }
-                : x,
-            )
-          : prev,
-      );
+    onSuccess: async () => {
+      await utils.endpoints.list.invalidate();
+      await utils.endpoints.get.invalidate();
     },
   });
 
