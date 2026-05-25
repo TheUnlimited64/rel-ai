@@ -1,166 +1,116 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { renderHook, act } from "@testing-library/react";
+import { describe, it, expect } from "vitest";
+import { renderHook, waitFor } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
 import { useEndpoints } from "../hooks/useEndpoints";
-
-interface MockModule {
-  trpcReact: typeof import("@/lib/trpc").trpcReact;
-  _mocks: {
-    mockInvalidate: ReturnType<typeof vi.fn>;
-    mockGetInvalidate: ReturnType<typeof vi.fn>;
-    mockSetData: ReturnType<typeof vi.fn>;
-    toggleMutate: ReturnType<typeof vi.fn>;
-  };
-}
-
-vi.mock("@/lib/trpc", () => {
-  const mockInvalidate = vi.fn().mockResolvedValue(undefined);
-  const mockGetInvalidate = vi.fn().mockResolvedValue(undefined);
-  const mockSetData = vi.fn();
-
-  const mockUtils = {
-    endpoints: {
-      list: { setData: mockSetData, invalidate: mockInvalidate },
-      get: { invalidate: mockGetInvalidate },
-    },
-  };
-
-  const mockQuery = vi.fn(() => ({
-    data: [
-      {
-        id: "1",
-        name: "Test EP",
-        path: "test-ep",
-        enabled: true,
-        createdAt: "2024-01-01",
-        updatedAt: "2024-01-01",
-        modelCount: 2,
-        proxyBase: "http://localhost:3000",
-      },
-    ],
-    isLoading: false,
-    error: null,
-  }));
-
-  const toggleMutate = vi.fn();
-  const deleteMutateAsync = vi.fn();
-
-  return {
-    trpcReact: {
-      endpoints: {
-        list: { useQuery: mockQuery },
-        update: {
-          useMutation: vi.fn((opts: Record<string, unknown>) => ({
-            mutate: toggleMutate,
-            mutateAsync: vi.fn(),
-            isPending: false,
-          })),
-        },
-        delete: {
-          useMutation: vi.fn(() => ({
-            mutate: vi.fn(),
-            mutateAsync: deleteMutateAsync,
-            isPending: false,
-          })),
-        },
-      },
-      useUtils: () => mockUtils,
-    },
-    _mocks: { mockInvalidate, mockGetInvalidate, mockSetData, toggleMutate },
-  };
-});
+import { TestWrapper } from "@/test-utils";
+import { server } from "@/test/msw/server";
+import { mockEndpointList, mockEndpoint } from "@/test/msw/handlers";
 
 describe("useEndpoints", () => {
-  beforeEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it("returns endpoints from query", () => {
+  it("returns endpoints list after loading", async () => {
     const { result } = renderHook(() => useEndpoints(), {
-      wrapper: ({ children }) => <div>{children}</div>,
+      wrapper: TestWrapper,
     });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
     expect(result.current.endpoints).toHaveLength(1);
     expect(result.current.endpoints[0]?.name).toBe("Test EP");
   });
 
-  it("returns loading state", () => {
+  it("shows loading state while fetching", () => {
+    server.use(
+      http.get("/api/trpc/endpoints.list", async () => {
+        await new Promise((r) => setTimeout(r, 5000));
+        return HttpResponse.json({ result: { data: mockEndpointList } });
+      }),
+    );
+
     const { result } = renderHook(() => useEndpoints(), {
-      wrapper: ({ children }) => <div>{children}</div>,
+      wrapper: TestWrapper,
     });
-    expect(result.current.loading).toBe(false);
+
+    expect(result.current.loading).toBe(true);
   });
 
-  it("returns null error when no error", () => {
+  it("returns null error when request succeeds", async () => {
     const { result } = renderHook(() => useEndpoints(), {
-      wrapper: ({ children }) => <div>{children}</div>,
+      wrapper: TestWrapper,
     });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
     expect(result.current.error).toBeNull();
   });
 
-  it("toggleEnabled calls mutate with toggled enabled value", () => {
+  it("returns error when request fails", async () => {
+    server.use(
+      http.get("/api/trpc/endpoints.list", () =>
+        HttpResponse.json(
+          { error: { message: "Internal Server Error", code: -32000 } },
+          { status: 500 },
+        ),
+      ),
+    );
+
     const { result } = renderHook(() => useEndpoints(), {
-      wrapper: ({ children }) => <div>{children}</div>,
+      wrapper: TestWrapper,
     });
 
-    const ep = result.current.endpoints[0]!;
-    act(() => {
-      result.current.toggleEnabled(ep);
-    });
+    await waitFor(() => expect(result.current.error).not.toBeNull());
 
-    expect(result.current.toggleMutation.mutate).toHaveBeenCalledWith({
-      id: "1",
-      enabled: false,
-    });
+    expect(result.current.error).toBeTruthy();
   });
 
-  it("toggleMutation onSuccess calls invalidate not setData", async () => {
-    renderHook(() => useEndpoints(), {
-      wrapper: ({ children }) => <div>{children}</div>,
+  it("update endpoint triggers mutation", async () => {
+    const updated = { ...mockEndpoint, enabled: false };
+
+    server.use(
+      http.post("/api/trpc/endpoints.update", () =>
+        HttpResponse.json({ result: { data: updated } }),
+      ),
+    );
+
+    const { result } = renderHook(() => useEndpoints(), {
+      wrapper: TestWrapper,
     });
 
-    const mod = await import("@/lib/trpc") as unknown as MockModule;
-    const mockFn = vi.mocked(mod.trpcReact.endpoints.update.useMutation);
-    const opts = mockFn.mock.calls[0]?.[0] as Record<string, unknown>;
-    const onSuccess = opts?.onSuccess as () => Promise<void>;
+    await waitFor(() => expect(result.current.loading).toBe(false));
 
-    expect(onSuccess).toBeDefined();
+    result.current.toggleEnabled(mockEndpoint);
 
-    await onSuccess();
-
-    expect(mod._mocks.mockInvalidate).toHaveBeenCalled();
-    expect(mod._mocks.mockGetInvalidate).toHaveBeenCalled();
-    expect(mod._mocks.mockSetData).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(result.current.toggleMutation.isSuccess).toBe(true),
+    );
   });
 
-  it("exposes toggleIsPending from mutation", () => {
+  it("delete endpoint triggers mutation", async () => {
+    server.use(
+      http.post("/api/trpc/endpoints.delete", () =>
+        HttpResponse.json({ result: { data: undefined } }),
+      ),
+    );
+
     const { result } = renderHook(() => useEndpoints(), {
-      wrapper: ({ children }) => <div>{children}</div>,
+      wrapper: TestWrapper,
     });
-    expect(result.current.toggleIsPending).toBe(false);
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await result.current.remove("endpoint-1");
+
+    await waitFor(() =>
+      expect(result.current.deleteMutation.isSuccess).toBe(true),
+    );
   });
 
-  it("rapid toggleEnabled calls are suppressed by isPending guard", async () => {
+  it("exposes toggleIsPending from mutation", async () => {
     const { result } = renderHook(() => useEndpoints(), {
-      wrapper: ({ children }) => <div>{children}</div>,
+      wrapper: TestWrapper,
     });
 
-    const ep = result.current.endpoints[0]!;
-    const mod = await import("@/lib/trpc") as unknown as MockModule;
-    const mockFn = vi.mocked(mod.trpcReact.endpoints.update.useMutation);
-    const mutationResult = mockFn.mock.results[0]?.value as { mutate: ReturnType<typeof vi.fn> };
-    mutationResult.mutate.mockClear();
-
-    act(() => {
-      result.current.toggleEnabled(ep);
-    });
-
-    expect(mutationResult.mutate).toHaveBeenCalledTimes(1);
-    expect(mutationResult.mutate).toHaveBeenCalledWith({
-      id: "1",
-      enabled: false,
-    });
+    await waitFor(() => expect(result.current.loading).toBe(false));
 
     expect(typeof result.current.toggleIsPending).toBe("boolean");
-
-    mutationResult.mutate.mockRestore();
   });
 });

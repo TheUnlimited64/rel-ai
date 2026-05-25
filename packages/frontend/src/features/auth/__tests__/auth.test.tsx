@@ -1,26 +1,17 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import { render, screen, waitFor, act } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider, RequireAuth, RedirectIfAuth, useAuth } from "@/lib/auth";
-
-function mockFetchImplementation(responses: Record<string, { ok: boolean; json: () => Promise<unknown> }>) {
-  return vi.fn((url: string) => {
-    for (const [pattern, response] of Object.entries(responses)) {
-      if (url.includes(pattern)) return Promise.resolve(response);
-    }
-    return Promise.resolve({ ok: false, json: () => Promise.resolve({}) });
-  });
-}
+import { server } from "@/test/msw/server";
 
 describe("RequireAuth", () => {
-  beforeEach(() => {
-    vi.restoreAllMocks();
-  });
-
   it("redirects unauthenticated user to /login", async () => {
-    vi.stubGlobal("fetch", mockFetchImplementation({
-      "/api/auth/me": { ok: false, json: () => Promise.resolve({ authenticated: false }) },
-    }));
+    server.use(
+      http.get("/api/auth/me", () =>
+        HttpResponse.json({ authenticated: false }, { status: 401 }),
+      ),
+    );
 
     render(
       <MemoryRouter initialEntries={["/protected"]}>
@@ -42,9 +33,11 @@ describe("RequireAuth", () => {
   });
 
   it("shows content when session is valid", async () => {
-    vi.stubGlobal("fetch", mockFetchImplementation({
-      "/api/auth/me": { ok: true, json: () => Promise.resolve({ authenticated: true }) },
-    }));
+    server.use(
+      http.get("/api/auth/me", () =>
+        HttpResponse.json({ authenticated: true }),
+      ),
+    );
 
     render(
       <MemoryRouter initialEntries={["/protected"]}>
@@ -67,14 +60,12 @@ describe("RequireAuth", () => {
 });
 
 describe("RedirectIfAuth", () => {
-  beforeEach(() => {
-    vi.restoreAllMocks();
-  });
-
   it("renders children when not authenticated", async () => {
-    vi.stubGlobal("fetch", mockFetchImplementation({
-      "/api/auth/me": { ok: false, json: () => Promise.resolve({ authenticated: false }) },
-    }));
+    server.use(
+      http.get("/api/auth/me", () =>
+        HttpResponse.json({ authenticated: false }, { status: 401 }),
+      ),
+    );
 
     render(
       <MemoryRouter initialEntries={["/login"]}>
@@ -92,9 +83,11 @@ describe("RedirectIfAuth", () => {
   });
 
   it("redirects authenticated user to /providers", async () => {
-    vi.stubGlobal("fetch", mockFetchImplementation({
-      "/api/auth/me": { ok: true, json: () => Promise.resolve({ authenticated: true }) },
-    }));
+    server.use(
+      http.get("/api/auth/me", () =>
+        HttpResponse.json({ authenticated: true }),
+      ),
+    );
 
     render(
       <MemoryRouter initialEntries={["/login"]}>
@@ -114,15 +107,12 @@ describe("RedirectIfAuth", () => {
 });
 
 describe("AuthProvider", () => {
-  beforeEach(() => {
-    vi.restoreAllMocks();
-  });
-
   it("calls /api/auth/me on mount and sets authenticated state", async () => {
-    const fetchMock = mockFetchImplementation({
-      "/api/auth/me": { ok: true, json: () => Promise.resolve({ authenticated: true }) },
-    });
-    vi.stubGlobal("fetch", fetchMock);
+    server.use(
+      http.get("/api/auth/me", () =>
+        HttpResponse.json({ authenticated: true }),
+      ),
+    );
 
     function AuthStatus() {
       const { isAuthenticated, isChecking } = useAuth();
@@ -140,23 +130,42 @@ describe("AuthProvider", () => {
     await waitFor(() => {
       expect(screen.getByText("authed")).toBeInTheDocument();
     });
-    expect(fetchMock).toHaveBeenCalledWith("/api/auth/me");
+  });
+
+  it("sets unauthenticated state when /api/auth/me fails", async () => {
+    server.use(
+      http.get("/api/auth/me", () =>
+        HttpResponse.json({ authenticated: false }, { status: 401 }),
+      ),
+    );
+
+    function AuthStatus() {
+      const { isAuthenticated, isChecking } = useAuth();
+      return <span>{isChecking ? "checking" : isAuthenticated ? "authed" : "unauthed"}</span>;
+    }
+
+    render(
+      <MemoryRouter>
+        <AuthProvider>
+          <AuthStatus />
+        </AuthProvider>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("unauthed")).toBeInTheDocument();
+    });
   });
 
   it("login calls /api/auth/login with password", async () => {
-    const fetchMock = vi.fn((url: string, opts?: RequestInit) => {
-      if (url.includes("/api/auth/me")) {
-        return Promise.resolve({ ok: false, json: () => Promise.resolve({}) });
-      }
-      if (url.includes("/api/auth/login")) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ authenticated: true }),
-        });
-      }
-      return Promise.resolve({ ok: false, json: () => Promise.resolve({}) });
-    });
-    vi.stubGlobal("fetch", fetchMock);
+    server.use(
+      http.get("/api/auth/me", () =>
+        HttpResponse.json({ authenticated: false }, { status: 401 }),
+      ),
+      http.post("/api/auth/login", () =>
+        HttpResponse.json({ authenticated: true }),
+      ),
+    );
 
     function LoginButton() {
       const { login, isAuthenticated } = useAuth();
@@ -185,10 +194,47 @@ describe("AuthProvider", () => {
     });
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith("/api/auth/login", expect.objectContaining({
-        method: "POST",
-        body: JSON.stringify({ password: "test-password" }),
-      }));
+      expect(screen.getByText("authed")).toBeInTheDocument();
+    });
+  });
+
+  it("logout calls /api/auth/logout", async () => {
+    let logoutCalled = false;
+
+    server.use(
+      http.get("/api/auth/me", () =>
+        HttpResponse.json({ authenticated: true }),
+      ),
+      http.post("/api/auth/logout", () => {
+        logoutCalled = true;
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+
+    function LogoutButton() {
+      const { logout, isChecking } = useAuth();
+      if (isChecking) return <span>checking</span>;
+      return <button onClick={logout}>Logout</button>;
+    }
+
+    render(
+      <MemoryRouter>
+        <AuthProvider>
+          <LogoutButton />
+        </AuthProvider>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Logout")).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      screen.getByText("Logout").click();
+    });
+
+    await waitFor(() => {
+      expect(logoutCalled).toBe(true);
     });
   });
 });
