@@ -941,6 +941,256 @@ describe("Proxy Routes", () => {
       const body = await res.json() as Record<string, unknown>;
       expect((body.error as Record<string, unknown>).code).toBe("validation_error");
     });
+
+    describe("tool calls", () => {
+      test("streaming tool_calls forwarded in SSE response", async () => {
+        const sseBody = [
+          'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_abc","type":"function","function":{"name":"get_weather","arguments":""}}]},"finish_reason":null}]}\n\n',
+          'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\\"location\\":\\"Paris\\"}"}}]},"finish_reason":null}]}\n\n',
+          'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}\n\n',
+          "data: [DONE]\n\n",
+        ].join("");
+
+        const mockFetch = (() => {
+          return Promise.resolve(
+            new Response(sseBody, {
+              headers: { "Content-Type": "text/event-stream" },
+            }),
+          );
+        }) as unknown as typeof fetch;
+
+        const app = createTestApp(db, mockFetch);
+
+        const res = await app.request(`/v1/${ENDPOINT_PATH}/chat/completions`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${TEST_TOKEN}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "gpt-4",
+            messages: [{ role: "user", content: "What's the weather?" }],
+            tools: [{ type: "function", function: { name: "get_weather", parameters: {} } }],
+            stream: true,
+          }),
+        });
+
+        expect(res.status).toBe(200);
+        const text = await res.text();
+        const lines = text.split("\n").filter(l => l.startsWith("data:") && !l.includes("[DONE]"));
+        const toolCallChunks: unknown[] = [];
+        for (const line of lines) {
+          const data = line.slice(5).trim();
+          try {
+            const parsed = JSON.parse(data);
+            const delta = parsed.choices?.[0]?.delta;
+            if (delta?.tool_calls) {
+              toolCallChunks.push(delta.tool_calls);
+            }
+          } catch { /* skip */ }
+        }
+        expect(toolCallChunks.length).toBeGreaterThan(0);
+
+        let hasToolCallsFinish = false;
+        for (const line of lines) {
+          const data = line.slice(5).trim();
+          try {
+            const parsed = JSON.parse(data);
+            if (parsed.choices?.[0]?.finish_reason === "tool_calls") {
+              hasToolCallsFinish = true;
+            }
+          } catch { /* skip */ }
+        }
+        expect(hasToolCallsFinish).toBe(true);
+      });
+
+      test("non-streaming tool_calls forwarded in JSON response", async () => {
+        const mockFetch = (() => {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                id: "chatcmpl-test",
+                object: "chat.completion",
+                choices: [
+                  {
+                    index: 0,
+                    message: {
+                      role: "assistant",
+                      content: null,
+                      tool_calls: [
+                        {
+                          id: "call_abc",
+                          type: "function",
+                          function: { name: "get_weather", arguments: '{"location":"Paris"}' },
+                        },
+                      ],
+                    },
+                    finish_reason: "tool_calls",
+                  },
+                ],
+                usage: { prompt_tokens: 5, completion_tokens: 2, total_tokens: 7 },
+              }),
+              { headers: { "Content-Type": "application/json" } },
+            ),
+          );
+        }) as unknown as typeof fetch;
+
+        const app = createTestApp(db, mockFetch);
+
+        const res = await app.request(`/v1/${ENDPOINT_PATH}/chat/completions`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${TEST_TOKEN}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "gpt-4",
+            messages: [{ role: "user", content: "What's the weather?" }],
+            tools: [{ type: "function", function: { name: "get_weather", parameters: {} } }],
+            stream: false,
+          }),
+        });
+
+        expect(res.status).toBe(200);
+        const body = await res.json() as Record<string, unknown>;
+        const choices = body.choices as Array<Record<string, unknown>>;
+        expect(choices[0].message).toHaveProperty("tool_calls");
+        const msg = choices[0].message as Record<string, unknown>;
+        const toolCalls = msg.tool_calls as Array<Record<string, unknown>>;
+        expect(toolCalls).toBeDefined();
+        expect(toolCalls.length).toBeGreaterThan(0);
+        expect(toolCalls[0].function).toBeDefined();
+        expect(choices[0].finish_reason).toBe("tool_calls");
+      });
+
+      test("messages with tool_calls and tool_call_id survive validation", async () => {
+        let capturedBody: unknown;
+        const mockFetch = (async (_url: unknown, init?: RequestInit) => {
+          if (init?.body) {
+            try { capturedBody = JSON.parse(init.body as string); } catch { capturedBody = init.body; }
+          }
+          return new Response(
+            JSON.stringify({
+              id: "chatcmpl-test",
+              object: "chat.completion",
+              choices: [{ index: 0, message: { role: "assistant", content: "ok" }, finish_reason: "stop" }],
+              usage: { prompt_tokens: 5, completion_tokens: 2, total_tokens: 7 },
+            }),
+            { headers: { "Content-Type": "application/json" } },
+          );
+        }) as unknown as typeof fetch;
+
+        const app = createTestApp(db, mockFetch);
+
+        const res = await app.request(`/v1/${ENDPOINT_PATH}/chat/completions`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${TEST_TOKEN}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "gpt-4",
+            messages: [
+              { role: "user", content: "What's the weather?" },
+              { role: "assistant", content: null, tool_calls: [{ id: "call_abc", type: "function", function: { name: "get_weather", arguments: "{}" } }] },
+              { role: "tool", tool_call_id: "call_abc", content: "22°C" },
+            ],
+            stream: false,
+          }),
+        });
+
+        expect(res.status).toBe(200);
+        expect(capturedBody).toBeDefined();
+        const body = capturedBody as Record<string, unknown>;
+        const messages = body.messages as Array<Record<string, unknown>>;
+        expect(messages).toBeDefined();
+        const assistantMsg = messages.find((m: Record<string, unknown>) => m.role === "assistant");
+        expect(assistantMsg).toHaveProperty("tool_calls");
+        const toolMsg = messages.find((m: Record<string, unknown>) => m.role === "tool");
+        expect(toolMsg).toHaveProperty("tool_call_id");
+      });
+
+      test("Anthropic tool_use content blocks converted to OpenAI tool_calls in streaming", async () => {
+        const anthropicDb = setupDb();
+        const anthropicProviderId = crypto.randomUUID();
+        anthropicDb.insert(providers)
+          .values({
+            id: anthropicProviderId,
+            name: "Test Anthropic",
+            adapterType: "anthropic",
+            baseUrl: "https://api.anthropic.com",
+            apiKey: "sk-ant-test-key",
+            enabled: true,
+          })
+          .run();
+
+        const claudeModelId = "claude-3-5-sonnet-20241022";
+        anthropicDb.insert(models)
+          .values({
+            id: claudeModelId,
+            displayName: "Claude 3.5 Sonnet",
+            type: "real",
+            providerId: anthropicProviderId,
+            providerModel: "claude-3-5-sonnet-20241022",
+          })
+          .run();
+
+        const anthropicEpId = crypto.randomUUID();
+        await seedEndpoint(anthropicDb, anthropicEpId, claudeModelId);
+
+        const sseBody = [
+          'event: message_start\ndata: {"type":"message_start","message":{"id":"msg_test","type":"message","role":"assistant","content":[],"model":"claude-3-5-sonnet-20241022","usage":{"input_tokens":10,"output_tokens":0}}}\n\n',
+          'event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_01","name":"get_weather"}}\n\n',
+          'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\\"location\\":\\"Par"}}\n\n',
+          'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"is\\"}"}}\n\n',
+          'event: content_block_stop\ndata: {"type":"content_block_stop","index":0}\n\n',
+          'event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":50}}\n\n',
+          'event: message_stop\ndata: {"type":"message_stop"}\n\n',
+        ].join("");
+
+        const mockFetch = (() => {
+          return Promise.resolve(
+            new Response(sseBody, {
+              headers: { "Content-Type": "text/event-stream" },
+            }),
+          );
+        }) as unknown as typeof fetch;
+
+        const app = createTestApp(anthropicDb, mockFetch);
+
+        const res = await app.request(`/v1/${ENDPOINT_PATH}/chat/completions`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${TEST_TOKEN}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: claudeModelId,
+            messages: [{ role: "user", content: "What's the weather in Paris?" }],
+            tools: [{ type: "function", function: { name: "get_weather", parameters: { type: "object", properties: { location: { type: "string" } } } } }],
+            stream: true,
+          }),
+        });
+
+        expect(res.status).toBe(200);
+        const text = await res.text();
+
+        const lines = text.split("\n").filter(l => l.startsWith("data:") && !l.includes("[DONE]"));
+        let foundToolCalls = false;
+        let foundToolCallsFinish = false;
+        for (const line of lines) {
+          const data = line.slice(5).trim();
+          try {
+            const parsed = JSON.parse(data);
+            const delta = parsed.choices?.[0]?.delta;
+            if (delta?.tool_calls) foundToolCalls = true;
+            if (parsed.choices?.[0]?.finish_reason === "tool_calls") foundToolCallsFinish = true;
+          } catch { /* skip */ }
+        }
+        expect(foundToolCalls).toBe(true);
+        expect(foundToolCallsFinish).toBe(true);
+      });
+    });
   });
 
   describe("GET /v1/:endpointPath/models", () => {

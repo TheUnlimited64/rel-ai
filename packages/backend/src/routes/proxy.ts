@@ -14,6 +14,18 @@ const ContentPartSchema: z.ZodType<import("../core/provider/types.js").ContentPa
   z.object({ type: z.literal("image_url"), image_url: z.object({ url: z.string(), detail: z.enum(["auto", "low", "high"]).optional() }) }),
 ]);
 
+const ToolCallFunctionSchema = z.object({
+  name: z.string(),
+  arguments: z.string(),
+});
+
+const ToolCallSchema = z.object({
+  index: z.number().optional(),
+  id: z.string().optional(),
+  type: z.literal("function").optional(),
+  function: ToolCallFunctionSchema.optional(),
+});
+
 const ChatCompletionSchema = z.object({
   model: z.string().min(1),
   messages: z
@@ -21,7 +33,11 @@ const ChatCompletionSchema = z.object({
       z.object({
         role: z.enum(["system", "user", "assistant", "tool", "developer"]),
         content: z.union([z.string(), z.array(ContentPartSchema), z.null()]),
-      }),
+        tool_calls: z.array(ToolCallSchema).optional(),
+        tool_call_id: z.string().optional(),
+        name: z.string().optional(),
+        reasoning_content: z.string().optional(),
+      }).passthrough(),
     )
     .min(1),
   stream: z.boolean().optional().default(true),

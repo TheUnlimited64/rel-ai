@@ -7,7 +7,7 @@ export type OpenAIStreamChunk = {
   model: string;
   choices: Array<{
     index: number;
-    delta: Record<string, string>;
+    delta: Record<string, unknown>;
     finish_reason: string | null;
   }>;
   usage?: {
@@ -24,7 +24,7 @@ export type OpenAICompletion = {
   model: string;
   choices: Array<{
     index: number;
-    message: { role: string; content: string };
+    message: { role: string; content: string | null; tool_calls?: import("../provider/types.js").ToolCall[] };
     finish_reason: string;
   }>;
   usage: {
@@ -39,13 +39,20 @@ export function formatStreamChunk(
   model: string,
   chunk: ParsedChunk,
 ): string {
-  const delta: Record<string, string> = {};
+  const delta: Record<string, unknown> = {};
   if (chunk.content !== undefined) {
     delta.content = chunk.content;
   }
   if (chunk.thinking !== undefined) {
     delta.reasoning_content = chunk.thinking;
   }
+  if (chunk.tool_calls !== undefined) {
+    delta.tool_calls = chunk.tool_calls;
+  }
+
+  const finishReason = chunk.done
+    ? (chunk.finish_reason ?? "stop")
+    : (chunk.finish_reason ?? null);
 
   const obj: OpenAIStreamChunk = {
     id,
@@ -56,7 +63,7 @@ export function formatStreamChunk(
       {
         index: 0,
         delta,
-        finish_reason: chunk.done ? "stop" : null,
+        finish_reason: finishReason,
       },
     ],
     ...(chunk.usage ? { usage: toOpenAIUsage(chunk.usage) } : {}),
@@ -72,9 +79,19 @@ export function formatStreamDone(): string {
 export function formatCompletion(
   id: string,
   model: string,
-  content: string,
+  content: string | null,
   usage: TokenUsage,
+  toolCalls?: import("../provider/types.js").ToolCall[],
+  finishReason?: string,
 ): string {
+  const message: { role: string; content: string | null; tool_calls?: import("../provider/types.js").ToolCall[] } = {
+    role: "assistant",
+    content,
+  };
+  if (toolCalls && toolCalls.length > 0) {
+    message.tool_calls = toolCalls;
+  }
+
   const obj: OpenAICompletion = {
     id,
     object: "chat.completion",
@@ -83,8 +100,8 @@ export function formatCompletion(
     choices: [
       {
         index: 0,
-        message: { role: "assistant", content },
-        finish_reason: "stop",
+        message,
+        finish_reason: finishReason ?? (toolCalls && toolCalls.length > 0 ? "tool_calls" : "stop"),
       },
     ],
     usage: toOpenAIUsage(usage),

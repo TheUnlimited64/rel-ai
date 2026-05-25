@@ -38,7 +38,13 @@ export class CommandCodeAdapter implements ProviderAdapter {
 
     const nonSystemMessages = params.messages
       .filter((m) => m.role !== "system")
-      .map((m) => ({ role: m.role, content: contentToString(m.content) }));
+      .map((m) => {
+        const msg: Record<string, unknown> = { role: m.role, content: contentToString(m.content) };
+        if (m.tool_calls) msg.tool_calls = m.tool_calls;
+        if (m.tool_call_id) msg.tool_call_id = m.tool_call_id;
+        if (m.name) msg.name = m.name;
+        return msg;
+      });
 
     const max_tokens = (params.overrides?.max_tokens as number | undefined) ?? 4096;
 

@@ -1,4 +1,4 @@
-import type { ParsedChunk, ProviderError, TokenUsage } from "../provider/types.js";
+import type { ParsedChunk, ProviderError, TokenUsage, ToolCallDelta } from "../provider/types.js";
 
 /**
  * Parse an SSE chunk that follows the OpenAI chat-completions streaming protocol.
@@ -8,6 +8,8 @@ import type { ParsedChunk, ProviderError, TokenUsage } from "../provider/types.j
 export function parseOpenAISSE(chunk: string): ParsedChunk | null {
   let content: string | undefined;
   let thinking: string | undefined;
+  let toolCalls: ToolCallDelta[] | undefined;
+  let finishReason: string | undefined;
   let done = false;
   let usage: TokenUsage | undefined;
 
@@ -35,7 +37,8 @@ export function parseOpenAISSE(chunk: string): ParsedChunk | null {
 
     const choices = parsed.choices as Array<Record<string, unknown>> | undefined;
     if (choices && choices.length > 0) {
-      const delta = choices[0]!.delta as Record<string, unknown> | undefined;
+      const choice = choices[0]!;
+      const delta = choice.delta as Record<string, unknown> | undefined;
       if (delta) {
         if (typeof delta.content === "string") {
           content = (content ?? "") + delta.content;
@@ -43,6 +46,13 @@ export function parseOpenAISSE(chunk: string): ParsedChunk | null {
         if (typeof delta.reasoning_content === "string") {
           thinking = (thinking ?? "") + delta.reasoning_content;
         }
+        if (Array.isArray(delta.tool_calls)) {
+          const deltas = delta.tool_calls as ToolCallDelta[];
+          toolCalls = [...(toolCalls ?? []), ...deltas];
+        }
+      }
+      if (typeof choice.finish_reason === "string" && choice.finish_reason !== "null") {
+        finishReason = choice.finish_reason;
       }
     }
 
@@ -55,13 +65,15 @@ export function parseOpenAISSE(chunk: string): ParsedChunk | null {
     }
   }
 
-  if (!content && !thinking && !done && !usage) {
+  if (!content && !thinking && !toolCalls && !done && !usage && !finishReason) {
     return null;
   }
 
   return {
     ...(content !== undefined ? { content } : {}),
     ...(thinking !== undefined ? { thinking } : {}),
+    ...(toolCalls !== undefined ? { tool_calls: toolCalls } : {}),
+    ...(finishReason !== undefined ? { finish_reason: finishReason } : {}),
     done,
     ...(usage !== undefined ? { usage } : {}),
   };

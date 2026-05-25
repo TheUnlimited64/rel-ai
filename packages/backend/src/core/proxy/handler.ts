@@ -305,6 +305,7 @@ export class ProxyHandler {
     const decoder = new TextDecoder();
     let buffer = "";
     let totalUsage: { promptTokens: number; completionTokens: number } | undefined;
+    let lastFinishReason: string | undefined;
     let hadError = false;
 
     const stream = new ReadableStream<Uint8Array>({
@@ -319,7 +320,7 @@ export class ProxyHandler {
                 if (parsed.usage) {
                   totalUsage = mergeUsage(totalUsage, parsed.usage);
                 }
-                if (parsed.content || parsed.thinking) {
+            if (parsed.content || parsed.thinking || parsed.tool_calls || parsed.finish_reason) {
                   const chunk = formatStreamChunk(id, providerModel, {
                     ...parsed,
                     done: false,
@@ -331,6 +332,7 @@ export class ProxyHandler {
             // Send final chunk with done
             const finalChunk = formatStreamChunk(id, providerModel, {
               done: true,
+              finish_reason: lastFinishReason,
               ...(totalUsage ? { usage: totalUsage } : {}),
             });
             controller.enqueue(textEncoder.encode(finalChunk));
@@ -366,11 +368,13 @@ export class ProxyHandler {
             }
 
             if (parsed.done) {
-              // Don't send yet; will send in the done handler above
+              if (parsed.finish_reason) lastFinishReason = parsed.finish_reason;
               continue;
             }
 
-            if (parsed.content || parsed.thinking) {
+            if (parsed.finish_reason) lastFinishReason = parsed.finish_reason;
+
+            if (parsed.content || parsed.thinking || parsed.tool_calls || parsed.finish_reason) {
               const chunk = formatStreamChunk(id, providerModel, parsed);
               controller.enqueue(textEncoder.encode(chunk));
             }
@@ -431,8 +435,10 @@ export class ProxyHandler {
     isStream: boolean,
     endpointId?: string,
   ): Promise<ProxyResult> {
-    let content: string;
+    let content: string | null;
     let usage: { promptTokens: number; completionTokens: number };
+    let toolCalls: import("../provider/types.js").ToolCall[] | undefined;
+    let finishReason: string | undefined;
 
     // If the provider response is SSE despite non-stream request, parse it
     const contentType = response.headers.get("content-type") ?? "";
@@ -441,6 +447,7 @@ export class ProxyHandler {
       const text = await response.text();
       let accumulated = "";
       let totalUsage: { promptTokens: number; completionTokens: number } | undefined;
+      let accumulatedToolCalls: import("../provider/types.js").ToolCallDelta[] | undefined;
 
       const parts = text.split("\n\n");
       for (const part of parts) {
@@ -449,10 +456,18 @@ export class ProxyHandler {
         if (!parsed) continue;
         if (parsed.content) accumulated += parsed.content;
         if (parsed.usage) totalUsage = mergeUsage(totalUsage, parsed.usage);
+        if (parsed.tool_calls) {
+          accumulatedToolCalls = [...(accumulatedToolCalls ?? []), ...parsed.tool_calls];
+        }
+        if (parsed.finish_reason) finishReason = parsed.finish_reason;
       }
 
       content = accumulated || "";
       usage = totalUsage ?? { promptTokens: 0, completionTokens: 0 };
+
+      if (accumulatedToolCalls && accumulatedToolCalls.length > 0) {
+        toolCalls = mergeToolCallDeltas(accumulatedToolCalls);
+      }
     } else {
       // JSON response — parse and normalize
       const json = await response.json() as Record<string, unknown>;
@@ -460,8 +475,15 @@ export class ProxyHandler {
       // Try OpenAI format
       const choices = json.choices as Array<Record<string, unknown>> | undefined;
       if (choices && choices.length > 0) {
-        const msg = choices[0]!.message as Record<string, unknown> | undefined;
-        content = (msg?.content as string) ?? "";
+        const choice = choices[0]!;
+        const msg = choice.message as Record<string, unknown> | undefined;
+        content = (msg?.content as string | null) ?? null;
+        if (Array.isArray(msg?.tool_calls)) {
+          toolCalls = msg!.tool_calls as import("../provider/types.js").ToolCall[];
+        }
+        if (typeof choice.finish_reason === "string") {
+          finishReason = choice.finish_reason;
+        }
       } else {
         // Anthropic non-stream format
         const jsonContent = json.content as Array<Record<string, unknown>> | undefined;
@@ -470,8 +492,21 @@ export class ProxyHandler {
             .filter((b) => b.type === "text")
             .map((b) => b.text as string)
             .join("");
+          const toolUseBlocks = jsonContent.filter((b) => b.type === "tool_use");
+          if (toolUseBlocks.length > 0) {
+            toolCalls = toolUseBlocks.map((b, i) => ({
+              index: i,
+              id: b.id as string,
+              type: "function" as const,
+              function: {
+                name: b.name as string,
+                arguments: typeof b.input === "string" ? b.input : JSON.stringify(b.input ?? {}),
+              },
+            }));
+            finishReason = "tool_calls";
+          }
         } else {
-          content = "";
+          content = null;
         }
       }
 
@@ -486,7 +521,7 @@ export class ProxyHandler {
       }
     }
 
-    const body = formatCompletion(id, providerModel, content, usage);
+    const body = formatCompletion(id, providerModel, content, usage, toolCalls, finishReason);
 
     this.emitLog({
       model,
@@ -557,4 +592,28 @@ export function mergeUsage(
     promptTokens: existing.promptTokens + incoming.promptTokens,
     completionTokens: existing.completionTokens + incoming.completionTokens,
   };
+}
+
+function mergeToolCallDeltas(deltas: import("../provider/types.js").ToolCallDelta[]): import("../provider/types.js").ToolCall[] {
+  const map = new Map<number, import("../provider/types.js").ToolCall>();
+  for (const d of deltas) {
+    const existing = map.get(d.index);
+    if (!existing) {
+      map.set(d.index, {
+        index: d.index,
+        id: d.id,
+        type: d.type ?? "function",
+        function: {
+          name: d.function?.name ?? "",
+          arguments: d.function?.arguments ?? "",
+        },
+      });
+    } else {
+      if (d.id) existing.id = d.id;
+      if (d.type) existing.type = d.type;
+      if (d.function?.name) existing.function = { name: d.function.name, arguments: existing.function?.arguments ?? "" };
+      if (d.function?.arguments) existing.function = { name: existing.function?.name ?? "", arguments: (existing.function?.arguments ?? "") + d.function.arguments };
+    }
+  }
+  return Array.from(map.values());
 }
