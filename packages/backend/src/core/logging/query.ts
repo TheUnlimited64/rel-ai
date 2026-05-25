@@ -74,7 +74,18 @@ export class RequestLogQuery {
       })
       .from(requestLogs)
       .where(where)
-      .get()!;
+      .get();
+
+    if (!overall) {
+      return {
+        totalRequests: 0,
+        successRate: 0,
+        avgLatencyMs: null,
+        totalTokens: 0,
+        byProvider: [],
+        byModel: [],
+      };
+    }
 
     // By provider
     const byProviderRows = this.db

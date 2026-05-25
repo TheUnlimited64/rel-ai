@@ -46,7 +46,7 @@ export const logsRouter = createTRPCRouter({
     if (input.before) {
       ctx.db
         .delete(requestLogs)
-        .where(lt(requestLogs.createdAt, input.before!))
+        .where(lt(requestLogs.createdAt, input.before))
         .run();
       return { success: true };
     }
