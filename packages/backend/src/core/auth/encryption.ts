@@ -25,6 +25,18 @@ async function getOrCreateEncryptionKey(): Promise<CryptoKey> {
       const fs = await import("node:fs");
       if (fs.existsSync(KEY_FILE_PATH)) {
         persistedKey = fs.readFileSync(KEY_FILE_PATH, "utf-8").trim();
+        // Warn if key file permissions are too permissive
+        try {
+          const stat = fs.statSync(KEY_FILE_PATH);
+          const mode = stat.mode & 0o777;
+          if (mode & 0o077) {
+            console.warn(
+              `[rel-ai] WARNING: Encryption key file ${KEY_FILE_PATH} has overly permissive permissions (${mode.toString(8)}). Expected 0600 or more restrictive.`,
+            );
+          }
+        } catch {
+          // stat failed — ignore, not critical
+        }
       }
     } catch {
       // File read failed — will generate new key
@@ -42,7 +54,7 @@ async function getOrCreateEncryptionKey(): Promise<CryptoKey> {
         if (!fs.existsSync(dir)) {
           fs.mkdirSync(dir, { recursive: true });
         }
-        fs.writeFileSync(KEY_FILE_PATH, keyMaterial, "utf-8");
+        fs.writeFileSync(KEY_FILE_PATH, keyMaterial, { mode: 0o600 });
         console.warn(
           `[rel-ai] ENCRYPTION_KEY not set. Generated and saved key to ${KEY_FILE_PATH}. Set ENCRYPTION_KEY env var for production use.`,
         );
@@ -101,4 +113,8 @@ export async function decrypt(ciphertext: string): Promise<string> {
  */
 export function resetEncryptionKey(): void {
   _encryptionKey = null;
+}
+
+export function getKeyFilePath(): string {
+  return KEY_FILE_PATH;
 }
