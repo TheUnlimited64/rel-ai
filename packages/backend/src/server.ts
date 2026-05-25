@@ -9,6 +9,7 @@ import { createDb, createMemoryDb } from "./db/connection.js";
 import type { DbClient } from "./db/connection.js";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import { createProxyRouter } from "./routes/proxy.js";
+import { createAuthRoutes } from "./api/routes/auth.js";
 import { ProxyHandler } from "./core/proxy/handler.js";
 import type { ProviderCredentials } from "./core/proxy/handler.js";
 import { ModelResolver } from "./core/model/resolver.js";
@@ -16,6 +17,7 @@ import { AdapterRegistry } from "./core/provider/registry.js";
 import { migratePlaintextApiKeys } from "./core/provider/migrate.js";
 import { OpenAIAdapter } from "./adapters/openai/adapter.js";
 import { AnthropicAdapter } from "./adapters/anthropic/adapter.js";
+import { CommandCodeAdapter } from "./adapters/commandcode/adapter.js";
 import { PassthroughAdapter } from "./adapters/custom/index.js";
 import { generateToken, maskToken } from "./core/auth/token.js";
 import { decrypt } from "./core/auth/encryption.js";
@@ -51,6 +53,7 @@ export function createApp(db: DbClient): Hono {
   const registry = new AdapterRegistry();
   registry.register(new OpenAIAdapter());
   registry.register(new AnthropicAdapter());
+  registry.register(new CommandCodeAdapter());
   registry.register(new PassthroughAdapter());
 
   // Build model lookup from DB
@@ -91,7 +94,7 @@ export function createApp(db: DbClient): Hono {
     return {
       id: row.id,
       name: row.name,
-      adapterType: row.adapterType as "openai" | "anthropic" | "custom",
+      adapterType: row.adapterType as "openai" | "anthropic" | "custom" | "commandcode",
       baseUrl: row.baseUrl,
       apiKey: row.apiKey,
       enabled: row.enabled,
@@ -145,6 +148,9 @@ export function createApp(db: DbClient): Hono {
   }));
 
   app.get("/health", (c) => c.json({ status: "ok", version: VERSION }));
+
+  // Session-based auth routes (login/logout/me)
+  app.route("/api/auth", createAuthRoutes());
 
   // Mount proxy routes
   const proxyRouter = createProxyRouter(db, proxyHandler);

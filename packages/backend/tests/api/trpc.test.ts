@@ -1,5 +1,6 @@
 import { describe, test, expect, beforeAll } from "bun:test";
 import { initializeApp } from "../../src/index.js";
+import { createSessionToken } from "../../src/core/auth/session.js";
 
 const BASE = "http://localhost";
 let app: ReturnType<typeof initializeApp>["app"];
@@ -19,15 +20,24 @@ describe("tRPC API", () => {
     expect(json.error.message).toBe("UNAUTHORIZED");
   });
 
-  test("protected procedure rejects invalid Bearer token", async () => {
+  test("protected procedure rejects invalid session cookie", async () => {
     const res = await app.request(`${BASE}/api/trpc/providers.list`, {
       method: "GET",
-      headers: { Authorization: "Bearer invalid-token" },
+      headers: { Cookie: "rel_ai_session=invalid-token" },
     });
     expect(res.status).toBe(500);
     const json = await res.json();
     expect(json.error).toBeDefined();
     expect(json.error.message).toBe("UNAUTHORIZED");
+  });
+
+  test("protected procedure accepts valid session cookie", async () => {
+    const token = await createSessionToken();
+    const res = await app.request(`${BASE}/api/trpc/providers.list`, {
+      method: "GET",
+      headers: { Cookie: `rel_ai_session=${token}` },
+    });
+    expect(res.status).toBe(200);
   });
 
   test("error formatter doesn't leak stack traces", async () => {

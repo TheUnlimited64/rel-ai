@@ -1,19 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { customFetch, resetRedirectLock } from "@/lib/trpc";
+import { customFetch } from "@/lib/trpc";
+
+const toastErrorMock = vi.fn();
+vi.mock("sonner", () => ({
+  toast: { error: (...args: unknown[]) => toastErrorMock(...args) },
+}));
 
 const originalLocation = window.location;
-
-function createLocalStorageMock() {
-  let store: Record<string, string> = {};
-  return {
-    getItem: (key: string) => store[key] ?? null,
-    setItem: (key: string, val: string) => { store[key] = val; },
-    removeItem: (key: string) => { delete store[key]; },
-    clear: () => { store = {}; },
-  };
-}
-
-let localStorageMock: ReturnType<typeof createLocalStorageMock>;
 let locationHref: string;
 
 function setLocation(pathname: string) {
@@ -31,10 +24,8 @@ function setLocation(pathname: string) {
 }
 
 beforeEach(() => {
-  localStorageMock = createLocalStorageMock();
-  vi.stubGlobal("localStorage", localStorageMock);
   setLocation("/dashboard");
-  resetRedirectLock();
+  toastErrorMock.mockClear();
 });
 
 afterEach(() => {
@@ -42,15 +33,25 @@ afterEach(() => {
 });
 
 describe("customFetch", () => {
-  it("redirects to login on 401 and clears token", async () => {
-    localStorageMock.setItem("rel_ai_token", "test-token");
+  it("shows toast on 401 and does NOT redirect", async () => {
     const response401 = new Response(null, { status: 401, statusText: "Unauthorized" });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response401));
 
     await customFetch("/api/trpc/test");
 
-    expect(localStorageMock.getItem("rel_ai_token")).toBeNull();
-    expect(locationHref).toBe("/login");
+    expect(toastErrorMock).toHaveBeenCalledWith("Session expired. Please sign in again.");
+    expect(locationHref).toBe("");
+  });
+
+  it("does not show toast on 401 when on /login page", async () => {
+    setLocation("/login");
+    const response401 = new Response(null, { status: 401, statusText: "Unauthorized" });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response401));
+
+    await customFetch("/api/trpc/test");
+
+    expect(toastErrorMock).not.toHaveBeenCalled();
+    expect(locationHref).toBe("");
   });
 
   it("preserves original error cause in network failure", async () => {
@@ -62,24 +63,14 @@ describe("customFetch", () => {
     );
   });
 
-  it("does not redirect on 401 when already on /login", async () => {
-    setLocation("/login");
-
-    const response401 = new Response(null, { status: 401, statusText: "Unauthorized" });
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response401));
-
-    await customFetch("/api/trpc/test");
-
-    expect(locationHref).toBe("");
-  });
-
-  it("returns non-401 responses without redirect", async () => {
+  it("returns non-401 responses without toast or redirect", async () => {
     const response200 = new Response(JSON.stringify({ ok: true }), { status: 200 });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response200));
 
     const result = await customFetch("/api/trpc/test");
     expect(result.status).toBe(200);
     expect(locationHref).toBe("");
+    expect(toastErrorMock).not.toHaveBeenCalled();
   });
 
   it("returns 500 response and logs warning", async () => {
@@ -108,9 +99,7 @@ describe("customFetch", () => {
     );
   });
 
-  it("fires only one redirect for 3 concurrent 401 responses", async () => {
-    localStorageMock.setItem("rel_ai_token", "old-token");
-
+  it("does not redirect even for multiple 401 responses", async () => {
     const mock401 = new Response(null, { status: 401 });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(mock401));
 
@@ -124,41 +113,6 @@ describe("customFetch", () => {
       expect(r.status).toBe(401);
     }
 
-    expect(locationHref).toBe("/login");
-    expect(localStorageMock.getItem("rel_ai_token")).toBeNull();
-  });
-
-  it("preserves 401 response details for all concurrent callers", async () => {
-    localStorageMock.setItem("rel_ai_token", "old-token");
-
-    const mock401 = new Response("token expired", { status: 401, statusText: "Unauthorized" });
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(mock401));
-
-    const results = await Promise.all([
-      customFetch("http://localhost/api/x"),
-      customFetch("http://localhost/api/y"),
-    ]);
-
-    for (const r of results) {
-      expect(r.status).toBe(401);
-      expect(r.statusText).toBe("Unauthorized");
-    }
-  });
-
-  it("allows redirect again after resetRedirectLock", async () => {
-    localStorageMock.setItem("rel_ai_token", "old-token");
-
-    const mock401 = new Response(null, { status: 401 });
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(mock401));
-
-    await customFetch("http://localhost/api/first");
-    expect(locationHref).toBe("/login");
-
-    locationHref = "";
-    resetRedirectLock();
-
-    localStorageMock.setItem("rel_ai_token", "another-token");
-    await customFetch("http://localhost/api/second");
-    expect(locationHref).toBe("/login");
+    expect(locationHref).toBe("");
   });
 });

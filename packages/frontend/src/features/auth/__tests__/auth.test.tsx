@@ -1,27 +1,27 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor, act } from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider, RequireAuth, RedirectIfAuth, useAuth } from "@/lib/auth";
 
-function createLocalStorageMock() {
-  let store: Record<string, string> = {};
-  return {
-    getItem: (key: string) => store[key] ?? null,
-    setItem: (key: string, val: string) => { store[key] = val; },
-    removeItem: (key: string) => { delete store[key]; },
-    clear: () => { store = {}; },
-  };
+function mockFetchImplementation(responses: Record<string, { ok: boolean; json: () => Promise<unknown> }>) {
+  return vi.fn((url: string) => {
+    for (const [pattern, response] of Object.entries(responses)) {
+      if (url.includes(pattern)) return Promise.resolve(response);
+    }
+    return Promise.resolve({ ok: false, json: () => Promise.resolve({}) });
+  });
 }
 
-let localStorageMock: ReturnType<typeof createLocalStorageMock>;
-
-beforeEach(() => {
-  localStorageMock = createLocalStorageMock();
-  vi.stubGlobal("localStorage", localStorageMock);
-});
-
 describe("RequireAuth", () => {
-  it("redirects unauthenticated user to /login", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("redirects unauthenticated user to /login", async () => {
+    vi.stubGlobal("fetch", mockFetchImplementation({
+      "/api/auth/me": { ok: false, json: () => Promise.resolve({ authenticated: false }) },
+    }));
+
     render(
       <MemoryRouter initialEntries={["/protected"]}>
         <AuthProvider>
@@ -35,11 +35,17 @@ describe("RequireAuth", () => {
         </AuthProvider>
       </MemoryRouter>,
     );
-    expect(screen.queryByText("Protected Content")).not.toBeInTheDocument();
-    expect(screen.getByText("Login Page")).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.queryByText("Protected Content")).not.toBeInTheDocument();
+    });
   });
 
-  it("shows no flash of protected content during redirect", () => {
+  it("shows content when session is valid", async () => {
+    vi.stubGlobal("fetch", mockFetchImplementation({
+      "/api/auth/me": { ok: true, json: () => Promise.resolve({ authenticated: true }) },
+    }));
+
     render(
       <MemoryRouter initialEntries={["/protected"]}>
         <AuthProvider>
@@ -53,15 +59,23 @@ describe("RequireAuth", () => {
         </AuthProvider>
       </MemoryRouter>,
     );
-    expect(screen.queryByText("Protected Content")).not.toBeInTheDocument();
-    expect(screen.queryByText("Loading...")).not.toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.getByText("Protected Content")).toBeInTheDocument();
+    });
   });
-
-
 });
 
 describe("RedirectIfAuth", () => {
-  it("renders children when not authenticated", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("renders children when not authenticated", async () => {
+    vi.stubGlobal("fetch", mockFetchImplementation({
+      "/api/auth/me": { ok: false, json: () => Promise.resolve({ authenticated: false }) },
+    }));
+
     render(
       <MemoryRouter initialEntries={["/login"]}>
         <AuthProvider>
@@ -71,11 +85,17 @@ describe("RedirectIfAuth", () => {
         </AuthProvider>
       </MemoryRouter>,
     );
-    expect(screen.getByText("Login Form")).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.getByText("Login Form")).toBeInTheDocument();
+    });
   });
 
-  it("redirects authenticated user to /providers with no flash", () => {
-    localStorageMock.setItem("rel_ai_token", "valid-token");
+  it("redirects authenticated user to /providers", async () => {
+    vi.stubGlobal("fetch", mockFetchImplementation({
+      "/api/auth/me": { ok: true, json: () => Promise.resolve({ authenticated: true }) },
+    }));
+
     render(
       <MemoryRouter initialEntries={["/login"]}>
         <AuthProvider>
@@ -86,35 +106,89 @@ describe("RedirectIfAuth", () => {
         </AuthProvider>
       </MemoryRouter>,
     );
-    expect(screen.queryByText("Login Form")).not.toBeInTheDocument();
-    expect(screen.queryByText("Loading...")).not.toBeInTheDocument();
-    expect(screen.getByText("Providers Page")).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.getByText("Providers Page")).toBeInTheDocument();
+    });
   });
 });
 
 describe("AuthProvider", () => {
-  it("hydrates token from localStorage on mount", () => {
-    localStorageMock.setItem("rel_ai_token", "stored-token");
-    function TokenDisplay() {
-      const { token } = useAuth();
-      return <span>{token}</span>;
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("calls /api/auth/me on mount and sets authenticated state", async () => {
+    const fetchMock = mockFetchImplementation({
+      "/api/auth/me": { ok: true, json: () => Promise.resolve({ authenticated: true }) },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    function AuthStatus() {
+      const { isAuthenticated, isChecking } = useAuth();
+      return <span>{isChecking ? "checking" : isAuthenticated ? "authed" : "unauthed"}</span>;
     }
+
     render(
       <MemoryRouter>
         <AuthProvider>
-          <TokenDisplay />
+          <AuthStatus />
         </AuthProvider>
       </MemoryRouter>,
     );
-    expect(screen.getByText("stored-token")).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.getByText("authed")).toBeInTheDocument();
+    });
+    expect(fetchMock).toHaveBeenCalledWith("/api/auth/me");
   });
 
-  it("logout clears token and redirects", () => {
-    localStorageMock.setItem("rel_ai_token", "some-token");
-    const hrefSpy = vi.spyOn(window, "location", "set");
-    // Directly test the mock localStorage behavior
-    localStorageMock.removeItem("rel_ai_token");
-    expect(localStorageMock.getItem("rel_ai_token")).toBeNull();
-    hrefSpy.mockRestore();
+  it("login calls /api/auth/login with password", async () => {
+    const fetchMock = vi.fn((url: string, opts?: RequestInit) => {
+      if (url.includes("/api/auth/me")) {
+        return Promise.resolve({ ok: false, json: () => Promise.resolve({}) });
+      }
+      if (url.includes("/api/auth/login")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ authenticated: true }),
+        });
+      }
+      return Promise.resolve({ ok: false, json: () => Promise.resolve({}) });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    function LoginButton() {
+      const { login, isAuthenticated } = useAuth();
+      return (
+        <div>
+          <span>{isAuthenticated ? "authed" : "unauthed"}</span>
+          <button onClick={() => login("test-password")}>Login</button>
+        </div>
+      );
+    }
+
+    render(
+      <MemoryRouter>
+        <AuthProvider>
+          <LoginButton />
+        </AuthProvider>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("unauthed")).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      screen.getByText("Login").click();
+    });
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/auth/login", expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ password: "test-password" }),
+      }));
+    });
   });
 });

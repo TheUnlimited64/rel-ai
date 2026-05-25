@@ -3,45 +3,65 @@ import {
   useContext,
   useState,
   useCallback,
+  useEffect,
   type ReactNode,
 } from "react";
 import { Navigate } from "react-router-dom";
 
-import { resetRedirectLock } from "@/lib/trpc";
-
-const TOKEN_KEY = "rel_ai_token";
-
 interface AuthContextValue {
-  token: string | null;
   isAuthenticated: boolean;
-  login: (token: string) => void;
+  isChecking: boolean;
+  login: (password: string) => Promise<boolean>;
   logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [token, setToken] = useState<string | null>(() =>
-    localStorage.getItem(TOKEN_KEY),
-  );
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isChecking, setIsChecking] = useState(true);
 
-  const login = useCallback((newToken: string) => {
-    localStorage.setItem(TOKEN_KEY, newToken);
-    setToken(newToken);
-    resetRedirectLock();
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/auth/me")
+      .then((res) => {
+        if (cancelled) return;
+        setIsAuthenticated(res.ok);
+        setIsChecking(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setIsAuthenticated(false);
+        setIsChecking(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  const login = useCallback(async (password: string): Promise<boolean> => {
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+      });
+      if (res.ok) {
+        setIsAuthenticated(true);
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
   }, []);
 
   const logout = useCallback(() => {
-    localStorage.removeItem(TOKEN_KEY);
-    setToken(null);
-    // Full reload to clear all client state (security)
+    fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+    setIsAuthenticated(false);
     window.location.href = "/login";
   }, []);
 
   return (
-    <AuthContext.Provider
-      value={{ token, isAuthenticated: token !== null, login, logout }}
-    >
+    <AuthContext.Provider value={{ isAuthenticated, isChecking, login, logout }}>
       {children}
     </AuthContext.Provider>
   );
@@ -54,19 +74,17 @@ export function useAuth(): AuthContextValue {
 }
 
 export function RequireAuth({ children }: { children: ReactNode }) {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isChecking } = useAuth();
 
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
-  }
+  if (isChecking) return null;
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
   return <>{children}</>;
 }
 
 export function RedirectIfAuth({ children }: { children: ReactNode }) {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isChecking } = useAuth();
 
-  if (isAuthenticated) {
-    return <Navigate to="/providers" replace />;
-  }
+  if (isChecking) return null;
+  if (isAuthenticated) return <Navigate to="/providers" replace />;
   return <>{children}</>;
 }

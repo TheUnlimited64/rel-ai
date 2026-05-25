@@ -6,14 +6,9 @@ import { renderWithProviders } from "@/test-utils";
 import { LoginPage } from "../login";
 
 const mockLogin = vi.hoisted(() => vi.fn());
-const mockMutate = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/auth", () => ({
-  useAuth: () => ({ login: mockLogin, logout: vi.fn(), token: null, isAuthenticated: false }),
-}));
-
-vi.mock("@/lib/trpc", () => ({
-  trpc: { auth: { verifyToken: { mutate: mockMutate } } },
+  useAuth: () => ({ login: mockLogin, logout: vi.fn(), isAuthenticated: false, isChecking: false }),
 }));
 
 function renderLogin() {
@@ -30,28 +25,27 @@ function renderLogin() {
 describe("LoginPage", () => {
   beforeEach(() => {
     mockLogin.mockReset();
-    mockMutate.mockReset();
   });
 
-  it("renders input and submit button", () => {
+  it("renders password input and submit button", () => {
     renderLogin();
-    expect(screen.getByPlaceholderText("Bearer token")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Password")).toBeInTheDocument();
     expect(screen.getByText("Sign In")).toBeInTheDocument();
   });
 
-  it("shows error on empty token submission", async () => {
+  it("shows error on empty password submission", async () => {
     renderLogin();
     await userEvent.click(screen.getByText("Sign In"));
-    expect(screen.getByText("Token is required")).toBeInTheDocument();
+    expect(screen.getByText("Password is required")).toBeInTheDocument();
   });
 
-  it("successful login stores token and navigates", async () => {
-    mockMutate.mockResolvedValueOnce({ valid: true });
+  it("successful login calls login with password and navigates", async () => {
+    mockLogin.mockResolvedValueOnce(true);
     renderLogin();
-    await userEvent.type(screen.getByPlaceholderText("Bearer token"), "valid-token");
+    await userEvent.type(screen.getByPlaceholderText("Password"), "admin");
     await userEvent.click(screen.getByText("Sign In"));
     await waitFor(() => {
-      expect(mockLogin).toHaveBeenCalledWith("valid-token");
+      expect(mockLogin).toHaveBeenCalledWith("admin");
     });
     await waitFor(() => {
       expect(screen.getByText("Providers Page")).toBeInTheDocument();
@@ -59,12 +53,12 @@ describe("LoginPage", () => {
   });
 
   it("failed login shows error message", async () => {
-    mockMutate.mockResolvedValueOnce({ valid: false });
+    mockLogin.mockResolvedValueOnce(false);
     renderLogin();
-    await userEvent.type(screen.getByPlaceholderText("Bearer token"), "bad-token");
+    await userEvent.type(screen.getByPlaceholderText("Password"), "wrong");
     await userEvent.click(screen.getByText("Sign In"));
     await waitFor(() => {
-      expect(screen.getByText("Invalid token. Please check and try again.")).toBeInTheDocument();
+      expect(screen.getByText("Invalid password. Please try again.")).toBeInTheDocument();
     });
   });
 });

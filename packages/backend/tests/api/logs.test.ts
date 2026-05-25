@@ -98,7 +98,7 @@ describe("Logs API", () => {
   });
 
   function createCaller() {
-    const ctx: tRPCContext = { authorized: true, token: authToken, db };
+    const ctx: tRPCContext = { authorized: true, db };
     return appRouter.createCaller(ctx);
   }
 
