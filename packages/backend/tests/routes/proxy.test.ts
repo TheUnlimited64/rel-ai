@@ -163,6 +163,89 @@ function createTestApp(
   return app;
 }
 
+function createCapturingApp(db: DbClient) {
+  let capturedRequest: ProxyRequest | undefined;
+
+  const modelId = "gpt-4";
+  const providerId = db.select().from(models).where().all()[0]?.providerId ?? "";
+  const providerRow = db.select().from(providers).where().all().find((p) => p.id === providerId);
+
+  const modelMap = new Map<string, Model>();
+  const providerMap = new Map<string, Provider>();
+
+  for (const row of db.select().from(models).all()) {
+    if (row.type === "real") {
+      modelMap.set(row.id, {
+        id: row.id,
+        displayName: row.displayName,
+        providerId: row.providerId!,
+        providerModel: row.providerModel!,
+        type: "real",
+        createdAt: new Date(row.createdAt),
+        updatedAt: new Date(row.updatedAt),
+      });
+    }
+  }
+
+  for (const row of db.select().from(providers).all()) {
+    providerMap.set(row.id, {
+      id: row.id,
+      name: row.name,
+      adapterType: row.adapterType as "openai" | "anthropic" | "custom",
+      baseUrl: row.baseUrl,
+      apiKey: row.apiKey,
+      enabled: row.enabled,
+      config: row.config ? JSON.parse(row.config) : undefined,
+      createdAt: new Date(row.createdAt),
+      updatedAt: new Date(row.updatedAt),
+    });
+  }
+
+  const resolver = new ModelResolver({
+    getModel: (id) => modelMap.get(id),
+    getProvider: (id) => providerMap.get(id),
+  });
+
+  const registry = new AdapterRegistry();
+  registry.register(new OpenAIAdapter());
+  registry.register(new AnthropicAdapter());
+
+  async function getProviderCredentials(pid: string) {
+    const p = providerMap.get(pid);
+    if (!p) return null;
+    let apiKey = p.apiKey;
+    if (apiKey.includes(":")) {
+      try {
+        apiKey = await decrypt(apiKey);
+      } catch {
+        // Use as-is if decrypt fails
+      }
+    }
+    return { baseUrl: p.baseUrl, apiKey };
+  }
+
+  const handler = new ProxyHandler({
+    resolver,
+    registry,
+    getProviderCredentials,
+    fetchFn: (() => Promise.resolve(new Response("not found", { status: 404 }))) as unknown as typeof fetch,
+  });
+
+  // Wrap handler.handle to capture the request
+  const originalHandle = handler.handle.bind(handler);
+  handler.handle = async (req: ProxyRequest) => {
+    capturedRequest = req;
+    return originalHandle(req);
+  };
+
+  const proxyRouter = createProxyRouter(db, handler);
+
+  const app = new Hono();
+  app.route("/v1", proxyRouter);
+
+  return { app, getCapturedRequest: () => capturedRequest };
+}
+
 // --- Tests ---
 
 describe("Proxy Routes", () => {

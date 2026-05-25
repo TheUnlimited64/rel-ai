@@ -313,6 +313,116 @@ describe("ProxyHandler", () => {
       expect(body.usage.prompt_tokens).toBe(10);
       expect(body.usage.completion_tokens).toBe(20);
     });
+
+    test("text/plain content-type is parsed as JSON, NOT as SSE", async () => {
+      // Provider returns text/plain with valid JSON body — should be parsed as JSON, not SSE
+      const textPlainResponse = new Response(
+        JSON.stringify({
+          id: "chatcmpl-test",
+          object: "chat.completion",
+          choices: [{ index: 0, message: { role: "assistant", content: "plain text response" }, finish_reason: "stop" }],
+          usage: { prompt_tokens: 5, completion_tokens: 10, total_tokens: 15 },
+        }),
+        {
+          headers: { "Content-Type": "text/plain" },
+        },
+      );
+      const fetchFn = createMockFetch([textPlainResponse]);
+      const handler = buildHandler([realModelOpenAI], [providerOpenAI], fetchFn);
+
+      const result = await handler.handle({
+        model: "gpt-4",
+        messages: [{ role: "user", content: "Hi" }],
+        stream: false,
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.status).toBe(200);
+
+      const body = JSON.parse(result.body as string);
+      expect(body.choices[0].message.content).toBe("plain text response");
+      expect(body.usage.prompt_tokens).toBe(5);
+      expect(body.usage.completion_tokens).toBe(10);
+    });
+
+    test("text/html content-type is parsed as JSON, NOT as SSE", async () => {
+      const textHtmlResponse = new Response(
+        JSON.stringify({
+          id: "chatcmpl-test",
+          object: "chat.completion",
+          choices: [{ index: 0, message: { role: "assistant", content: "html response" }, finish_reason: "stop" }],
+          usage: { prompt_tokens: 3, completion_tokens: 7, total_tokens: 10 },
+        }),
+        {
+          headers: { "Content-Type": "text/html; charset=utf-8" },
+        },
+      );
+      const fetchFn = createMockFetch([textHtmlResponse]);
+      const handler = buildHandler([realModelOpenAI], [providerOpenAI], fetchFn);
+
+      const result = await handler.handle({
+        model: "gpt-4",
+        messages: [{ role: "user", content: "Hi" }],
+        stream: false,
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      const body = JSON.parse(result.body as string);
+      expect(body.choices[0].message.content).toBe("html response");
+    });
+
+    test("text/event-stream content-type triggers SSE parsing", async () => {
+      // Provider returns SSE despite non-stream request
+      const sseResponse = openAIStreamChunks([
+        { content: "Hello" },
+        { content: " from SSE" },
+        { done: true },
+      ]);
+      const fetchFn = createMockFetch([sseResponse]);
+      const handler = buildHandler([realModelOpenAI], [providerOpenAI], fetchFn);
+
+      const result = await handler.handle({
+        model: "gpt-4",
+        messages: [{ role: "user", content: "Hi" }],
+        stream: false,
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.status).toBe(200);
+
+      const body = JSON.parse(result.body as string);
+      expect(body.choices[0].message.content).toBe("Hello from SSE");
+    });
+
+    test("application/xhtml+xml content-type is parsed as JSON, NOT as SSE", async () => {
+      const xhtmlResponse = new Response(
+        JSON.stringify({
+          id: "chatcmpl-test",
+          object: "chat.completion",
+          choices: [{ index: 0, message: { role: "assistant", content: "xhtml response" }, finish_reason: "stop" }],
+          usage: { prompt_tokens: 2, completion_tokens: 4, total_tokens: 6 },
+        }),
+        {
+          headers: { "Content-Type": "application/xhtml+xml" },
+        },
+      );
+      const fetchFn = createMockFetch([xhtmlResponse]);
+      const handler = buildHandler([realModelOpenAI], [providerOpenAI], fetchFn);
+
+      const result = await handler.handle({
+        model: "gpt-4",
+        messages: [{ role: "user", content: "Hi" }],
+        stream: false,
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      const body = JSON.parse(result.body as string);
+      expect(body.choices[0].message.content).toBe("xhtml response");
+    });
   });
 
   describe("streaming proxy", () => {

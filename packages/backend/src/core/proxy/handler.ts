@@ -410,7 +410,7 @@ export class ProxyHandler {
 
     // If the provider response is SSE despite non-stream request, parse it
     const contentType = response.headers.get("content-type") ?? "";
-    if (contentType.includes("text/event-stream") || contentType.includes("text/")) {
+    if (contentType.startsWith("text/event-stream")) {
       // Read the whole body as text and parse SSE chunks
       const text = await response.text();
       let accumulated = "";

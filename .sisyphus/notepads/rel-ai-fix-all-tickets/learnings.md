@@ -19,3 +19,13 @@
 - Fix: validate apiKey exists + non-empty string before use, throw `Error("Anthropic API key is required")`
 - Pre-existing hint on line 115 (`delta` unused) — not related, not touched
 - Test file: `packages/backend/tests/adapters/anthropic/adapter.test.ts` — all 26 tests pass
+
+## T075 — parseDependents fragile regex
+- Fragile regex: `msg.match(/HAS_DEPENDENTS:(.+)/)` coupled backend string format to frontend parsing
+- Fix: backend sends JSON-array in error message (`HAS_DEPENDENTS:["a","b"]`), router parses via `JSON.parse`, attaches to custom TRPCError property, error formatter merges into response `data.dependents`
+- tRPC v11 TRPCError constructor does NOT accept `data` field — only `{ message, code, cause }`
+- Workaround: set dependents as custom property on error instance, add `errorFormatter` in `initTRPC.create()` to merge into response shape
+- Frontend reads `error.data.dependents` via structured property access instead of regex
+- `createCaller()` doesn't go through error formatter → backend tests can't verify `data.dependents` via caller
+- Test added: frontend `parseDependents` unit test (12 cases) in `packages/frontend/tests/unit/`
+- Files changed: `service.ts`, `routers/models.ts`, `trpc.ts`, `useModels.ts`, `detail.tsx` (unchanged), new test file

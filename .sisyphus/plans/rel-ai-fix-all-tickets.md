@@ -662,7 +662,7 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
 
 ## Wave 3 — Proxy + Handler Fixes (same-file sequential)
 
-- [ ] 9. T037 — Mask provider errors from clients
+- [x] 9. T037 — Mask provider errors from clients
 
   **What to do**:
   - In `packages/backend/src/core/proxy/handler.ts`, replace raw upstream error messages with generic error responses
@@ -712,7 +712,7 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
   - Files: `packages/backend/src/core/proxy/handler.ts`, `packages/backend/tests/core/proxy/handler.test.ts`
   - Pre-commit: `bun test packages/backend/tests/core/proxy/handler.test.ts`
 
-- [ ] 10. T040 — Fix unsafe role cast to enum
+- [x] 10. T040 — Fix unsafe role cast to enum
 
   **What to do**:
   - In `packages/backend/src/routes/proxy.ts:127`, replace `messages as Array<{ role: "system"|"user"|"assistant"; content: string }>` with proper Zod validation using `z.enum(["system", "user", "assistant"])`
@@ -916,7 +916,7 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
   - Files: `packages/backend/src/core/proxy/handler.ts`, test file
   - Pre-commit: `bun test packages/backend/`
 
-- [ ] 14. T075 — Fix fragile parse-dependents regex
+- [x] 14. T075 — Fix fragile parse-dependents regex
 
   **What to do**:
   - Replace fragile regex in the parse-dependents logic with a more robust parsing approach
