@@ -3,6 +3,7 @@ import type { ProviderAdapter } from "../provider/adapter.js";
 import type { ProviderError as PProviderError } from "../provider/types.js";
 import { ModelResolver } from "../model/resolver.js";
 import { AdapterRegistry } from "../provider/registry.js";
+import { debugLog } from "./debug-logger.js";
 import {
   ModelNotFoundError,
   AllProvidersFailedError,
@@ -151,6 +152,8 @@ export class ProxyHandler {
         overrides: mergedOverrides,
       });
 
+      debugLog("provider-request", { url: providerRequest.url, adapterType, providerModel });
+
       let response: Response;
       try {
         response = await this.fetchWithTimeout(providerRequest.url, {
@@ -187,6 +190,7 @@ export class ProxyHandler {
 
       // Handle provider errors
       if (!response.ok) {
+        debugLog("provider-error", { url: providerRequest.url, status: response.status, adapterType });
         let providerError: PProviderError;
         try {
           providerError = await adapter.parseError(response);
@@ -308,36 +312,48 @@ export class ProxyHandler {
     let lastFinishReason: string | undefined;
     let hadError = false;
 
+    let streamClosed = false;
     const stream = new ReadableStream<Uint8Array>({
       pull: async (controller) => {
         try {
           const { done, value } = await reader.read();
+          debugLog("stream-read", { done, bytes: value?.length ?? 0 });
           if (done) {
+            if (streamClosed) return;
+            streamClosed = true;
             // Flush remaining buffer
-            if (buffer.trim()) {
-              const parsed = adapter.parseSSEChunk(buffer);
-              if (parsed) {
-                if (parsed.usage) {
-                  totalUsage = mergeUsage(totalUsage, parsed.usage);
-                }
-            if (parsed.content || parsed.thinking || parsed.tool_calls || parsed.finish_reason) {
-                  const chunk = formatStreamChunk(id, providerModel, {
-                    ...parsed,
-                    done: false,
-                  });
-                  controller.enqueue(textEncoder.encode(chunk));
+            try {
+              if (buffer.trim()) {
+                const parsed = adapter.parseSSEChunk(buffer);
+                if (parsed) {
+                  if (parsed.usage) {
+                    totalUsage = mergeUsage(totalUsage, parsed.usage);
+                  }
+                  if (parsed.content || parsed.thinking || parsed.tool_calls || parsed.finish_reason) {
+                    const chunk = formatStreamChunk(id, providerModel, {
+                      ...parsed,
+                      done: false,
+                    });
+                    controller.enqueue(textEncoder.encode(chunk));
+                  }
                 }
               }
+            } catch {
+              // Best-effort flush — don't let flush errors break the close
             }
             // Send final chunk with done
-            const finalChunk = formatStreamChunk(id, providerModel, {
-              done: true,
-              finish_reason: lastFinishReason,
-              ...(totalUsage ? { usage: totalUsage } : {}),
-            });
-            controller.enqueue(textEncoder.encode(finalChunk));
-            controller.enqueue(textEncoder.encode(formatStreamDone()));
-            controller.close();
+            try {
+              const finalChunk = formatStreamChunk(id, providerModel, {
+                done: true,
+                finish_reason: lastFinishReason,
+                ...(totalUsage ? { usage: totalUsage } : {}),
+              });
+              controller.enqueue(textEncoder.encode(finalChunk));
+              controller.enqueue(textEncoder.encode(formatStreamDone()));
+              controller.close();
+            } catch {
+              // Controller already closed — ignore
+            }
 
             this.emitLog({
               model,
@@ -354,13 +370,17 @@ export class ProxyHandler {
           }
 
           buffer += decoder.decode(value, { stream: true });
-          const parts = buffer.split("\n\n");
+          debugLog("stream-raw", { bufferPreview: buffer.slice(0, 500), bufferLen: buffer.length });
+          const delimiter = adapter.streamDelimiter ?? "\n\n";
+          const parts = buffer.split(delimiter);
+          debugLog("stream-split", { delimiter: JSON.stringify(delimiter), partsCount: parts.length, bufferLen: buffer.length });
           // Keep last incomplete part in buffer
           buffer = parts.pop() ?? "";
 
           for (const part of parts) {
             if (!part.trim()) continue;
             const parsed = adapter.parseSSEChunk(part);
+            debugLog("stream-chunk", { partLen: part.length, parsed: parsed ? { content: !!parsed.content, done: parsed.done, thinking: !!parsed.thinking, toolCalls: !!parsed.tool_calls } : null });
             if (!parsed) continue;
 
             if (parsed.usage) {
@@ -380,6 +400,7 @@ export class ProxyHandler {
             }
           }
         } catch (err) {
+          debugLog("stream-error", { message: err instanceof Error ? err.message : String(err), stack: err instanceof Error ? err.stack : undefined });
           if (!hadError) {
             hadError = true;
             void reader.cancel();
@@ -406,6 +427,8 @@ export class ProxyHandler {
         }
       },
       cancel: async () => {
+        if (streamClosed) return;
+        streamClosed = true;
         abortController?.abort();
         await reader.cancel();
       },
@@ -449,7 +472,8 @@ export class ProxyHandler {
       let totalUsage: { promptTokens: number; completionTokens: number } | undefined;
       let accumulatedToolCalls: import("../provider/types.js").ToolCallDelta[] | undefined;
 
-      const parts = text.split("\n\n");
+      const delimiter = adapter.streamDelimiter ?? "\n\n";
+      const parts = text.split(delimiter);
       for (const part of parts) {
         if (!part.trim()) continue;
         const parsed = adapter.parseSSEChunk(part);

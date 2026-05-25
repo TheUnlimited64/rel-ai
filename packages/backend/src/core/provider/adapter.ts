@@ -1,7 +1,15 @@
 import type { Message, ParsedChunk, ProviderError } from "./types.js";
 
+export interface TestConnectionResult {
+  success: boolean;
+  error?: string;
+  latencyMs: number;
+}
+
 export interface ProviderAdapter {
   readonly type: string;
+
+  readonly streamDelimiter?: string;
 
   createRequest(params: {
     model: string;
@@ -15,4 +23,6 @@ export interface ProviderAdapter {
   parseError(response: Response): Promise<ProviderError>;
 
   isRateLimitError(error: ProviderError): boolean;
+
+  testConnection?(baseUrl: string, apiKey: string): Promise<TestConnectionResult>;
 }

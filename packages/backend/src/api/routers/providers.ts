@@ -85,7 +85,7 @@ export const providersRouter = createTRPCRouter({
   testConnection: protectedProcedure
     .input(TestConnectionInputSchema)
     .mutation(async ({ ctx, input }) => {
-      return mapNotFound(() => testProviderConnection(ctx.db, input.id));
+      return mapNotFound(() => testProviderConnection(ctx.db, input.id, ctx.registry));
     }),
 
   regenerateApiKey: protectedProcedure

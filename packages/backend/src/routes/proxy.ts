@@ -122,10 +122,8 @@ export function createProxyRouter(db: DbClient, handler: ProxyHandler) {
     }
 
     // Validate with Zod
-    console.log("[PROXY DEBUG] Request body:", JSON.stringify(body, null, 2));
     const parsed = ChatCompletionSchema.safeParse(body);
     if (!parsed.success) {
-      console.error("[PROXY DEBUG] Zod validation failed:", JSON.stringify(parsed.error.issues, null, 2));
       const issues = parsed.error.issues.map((i) => ({
         field: i.path.join("."),
         message: i.message,

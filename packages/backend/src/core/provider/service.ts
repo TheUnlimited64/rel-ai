@@ -3,6 +3,7 @@ import { encrypt, decrypt } from "../auth/encryption.js";
 import { providers } from "../../db/schema/providers.js";
 import { models } from "../../db/schema/models.js";
 import type { DbClient } from "../../db/connection.js";
+import type { AdapterRegistry } from "./registry.js";
 
 export type ProviderRow = typeof providers.$inferSelect;
 
@@ -185,12 +186,20 @@ export async function regenerateApiKey(
 export async function testProviderConnection(
   db: DbClient,
   id: string,
+  registry: AdapterRegistry,
 ): Promise<{ success: boolean; error?: string; latencyMs: number }> {
   const row = db.select().from(providers).where(eq(providers.id, id)).get();
   if (!row) throw new Error("NOT_FOUND");
 
   const apiKey = await decrypt(row.apiKey);
   const baseUrl = row.baseUrl.replace(/\/$/, "");
+  const adapterType = row.adapterType as string;
+
+  const adapter = registry.has(adapterType) ? registry.get(adapterType) : null;
+  if (adapter?.testConnection) {
+    return adapter.testConnection(baseUrl, apiKey);
+  }
+
   const url = `${baseUrl}/v1/models`;
 
   const start = Date.now();

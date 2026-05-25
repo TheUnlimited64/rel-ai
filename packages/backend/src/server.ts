@@ -47,14 +47,14 @@ export interface StartedServer {
 }
 
 export function createApp(db: DbClient): Hono {
-  const createContext = createContextFactory(db);
-
   // Initialize adapter registry
   const registry = new AdapterRegistry();
   registry.register(new OpenAIAdapter());
   registry.register(new AnthropicAdapter());
   registry.register(new CommandCodeAdapter());
   registry.register(new PassthroughAdapter());
+
+  const createContext = createContextFactory(db, registry);
 
   // Build model lookup from DB
   function getModelFromDb(id: string): Model | undefined {

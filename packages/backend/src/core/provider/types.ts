@@ -8,7 +8,7 @@ export type ToolCallFunction = {
 };
 
 export type ToolCall = {
-  index: number;
+  index?: number;
   id?: string;
   type?: "function";
   function?: ToolCallFunction;
