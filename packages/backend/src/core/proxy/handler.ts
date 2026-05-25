@@ -58,7 +58,7 @@ export class ProxyHandler {
 
   async handle(request: ProxyRequest): Promise<ProxyResult> {
     const start = Date.now();
-    const id = generateId();
+    const id = request.requestId || generateId();
     const endpointId = request.endpointId;
 
     // Retry loop: on rate limit, mark unhealthy and try next provider

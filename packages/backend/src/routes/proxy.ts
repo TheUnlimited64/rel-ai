@@ -122,15 +122,16 @@ export function createProxyRouter(db: DbClient, handler: ProxyHandler) {
     const { model, messages, stream, ...overrides } = parsed.data;
 
     // Build proxy request
+    const requestId = crypto.randomUUID();
     const proxyRequest: ProxyRequest = {
       model,
       messages,
       stream,
       overrides: Object.keys(overrides).length > 0 ? overrides : undefined,
       endpointId: endpoint.id,
+      requestId,
     };
 
-    const requestId = crypto.randomUUID();
     const result = await handler.handle(proxyRequest);
 
     if (!result.ok) {

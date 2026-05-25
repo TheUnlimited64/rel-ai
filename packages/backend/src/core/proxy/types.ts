@@ -6,6 +6,7 @@ export type ProxyRequest = {
   stream: boolean;
   overrides?: Record<string, unknown>;
   endpointId?: string;
+  requestId?: string;
 };
 
 export type ProxyResult =
