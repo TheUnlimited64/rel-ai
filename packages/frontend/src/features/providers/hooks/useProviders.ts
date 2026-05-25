@@ -1,4 +1,5 @@
 import { trpcReact as trpcHooks } from "@/lib/trpc";
+import { parseProviderResponse, parseProviderResponseArray } from "../api";
 import type { ProviderResponse } from "../api";
 
 export function useProviders() {
@@ -8,7 +9,7 @@ export function useProviders() {
   const toggleMutation = trpcHooks.providers.update.useMutation({
     onSuccess: async (updated) => {
       utils.providers.list.setData(undefined, (prev) =>
-        prev ? prev.map((x) => (x.id === updated.id ? (updated as ProviderResponse) : x)) : prev,
+        prev ? prev.map((x) => (x.id === updated.id ? parseProviderResponse(updated) : x)) : prev,
       );
     },
   });
@@ -24,7 +25,7 @@ export function useProviders() {
   const remove = (id: string) => deleteMutation.mutateAsync({ id });
 
   return {
-    providers: (query.data ?? []) as ProviderResponse[],
+    providers: parseProviderResponseArray(query.data ?? []),
     loading: query.isLoading,
     error: query.error?.message ?? null,
     reload: () => utils.providers.list.invalidate(),

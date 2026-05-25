@@ -21,8 +21,10 @@ export const queryClient = new QueryClient({
   },
 });
 
-queryClient.getQueryCache().config.onError = (error) => {
+queryClient.getQueryCache().config.onError = (error, query) => {
+  // Suppress errors from background refetches — only toast on initial loads
+  if (query.state.dataUpdatedAt > 0) return;
   if (error instanceof Error && isConnectionError(error.message)) {
-    toast.error("Connection lost. Retrying...");
+    toast.error("Connection lost. Retrying...", { id: "connection-lost" });
   }
 };

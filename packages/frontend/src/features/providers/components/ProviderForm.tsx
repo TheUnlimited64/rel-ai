@@ -9,8 +9,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { trpcReact as trpcHooks } from "@/lib/trpc";
 import { formatMutationError } from "@/lib/format-error";
-import { AdapterTypeSchema, type AdapterType } from "@rel-ai/shared";
-import { ADAPTER_TYPES, type CreateProviderResponse } from "../api";
+import { AdapterTypeSchema } from "@rel-ai/shared";
+import { ADAPTER_TYPES, extractApiKeyRaw, formatAdapterLabel, isAdapterType } from "../api";
 import { ApiKeyRevealDialog } from "./ApiKeyRevealDialog";
 
 const formSchema = z.object({
@@ -40,7 +40,7 @@ export function ProviderForm({ onSuccess, onCancel }: ProviderFormProps) {
     const input = { name: data.name, adapterType: data.adapterType, baseUrl: data.baseUrl, apiKey: data.apiKey, config: configObj };
     const result = await createMutation.mutateAsync(input);
     await utils.providers.list.invalidate();
-    const rawKey = "apiKeyRaw" in result ? (result as CreateProviderResponse).apiKeyRaw : null;
+    const rawKey = extractApiKeyRaw(result);
     if (!rawKey) return;
     setApiKeyDialog({ open: true, key: rawKey, providerId: result.id });
   }
@@ -60,10 +60,10 @@ export function ProviderForm({ onSuccess, onCancel }: ProviderFormProps) {
         </div>
         <div className="space-y-2">
           <Label>Adapter Type</Label>
-          <Select value={adapterType} onValueChange={(v) => { if (ADAPTER_TYPES.includes(v as AdapterType)) setValue("adapterType", v as AdapterType, { shouldValidate: true }); }}>
+          <Select value={adapterType ?? ""} onValueChange={(v) => { if (v && isAdapterType(v)) setValue("adapterType", v, { shouldValidate: true }); }}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
-              {ADAPTER_TYPES.map((t) => <SelectItem key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</SelectItem>)}
+              {ADAPTER_TYPES.map((t) => <SelectItem key={t} value={t}>{formatAdapterLabel(t)}</SelectItem>)}
             </SelectContent>
           </Select>
           {errors.adapterType && <p className="text-xs text-destructive">{errors.adapterType.message}</p>}

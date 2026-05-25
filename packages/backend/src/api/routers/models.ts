@@ -53,10 +53,8 @@ const TestResolutionInputSchema = z.object({
   id: z.string().min(1),
 });
 
-function mapServiceError<T>(fn: () => T | Promise<T>): Promise<T> {
-  try {
-    return Promise.resolve(fn());
-  } catch (e) {
+export function mapServiceError<T>(fn: () => T | Promise<T>): Promise<T> {
+  const mapError = (e: unknown) => {
     if (e instanceof Error) {
       const msg = e.message;
       if (
@@ -93,6 +91,20 @@ function mapServiceError<T>(fn: () => T | Promise<T>): Promise<T> {
       }
     }
     throw e;
+  };
+  try {
+    const result = fn();
+    return result instanceof Promise
+      ? result.catch(mapError)
+      : Promise.resolve(result);
+  } catch (e) {
+    try {
+      mapError(e);
+      // mapError always throws, but TypeScript doesn't know that
+      return Promise.reject(e);
+    } catch (mapped) {
+      return Promise.reject(mapped);
+    }
   }
 }
 

@@ -3,7 +3,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
 import { trpcReact as trpcHooks } from "@/lib/trpc";
-import { type CreateProviderResponse } from "../api";
+import { extractApiKeyRaw } from "../api";
 
 interface ProviderRegenerateKeyProps {
   providerId: string;
@@ -18,7 +18,7 @@ export function ProviderRegenerateKey({
   const regenerateMutation = trpcHooks.providers.regenerateApiKey.useMutation({
     onSuccess: async (result) => {
       onConfirmClose();
-      const rawKey = "apiKeyRaw" in result ? (result as CreateProviderResponse).apiKeyRaw : null;
+      const rawKey = extractApiKeyRaw(result);
       if (!rawKey) return;
       onKeyRevealed(rawKey);
     },

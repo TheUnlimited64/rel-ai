@@ -42,6 +42,17 @@ export function isAdapterType(value: string): value is AdapterType {
   return (ADAPTER_TYPES as readonly string[]).includes(value);
 }
 
+const ADAPTER_LABELS: Record<AdapterType, string> = {
+  openai: "OpenAI",
+  anthropic: "Anthropic",
+  custom: "Custom",
+  commandcode: "Command Code",
+};
+
+export function formatAdapterLabel(type: AdapterType): string {
+  return ADAPTER_LABELS[type] ?? type.charAt(0).toUpperCase() + type.slice(1);
+}
+
 export function maskApiKey(key: string): string {
   if (!key || key.length <= 7) return "****";
   return `${key.slice(0, 3)}...${key.slice(-4)}`;

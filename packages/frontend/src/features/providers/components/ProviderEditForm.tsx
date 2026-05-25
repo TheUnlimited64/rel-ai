@@ -7,8 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { trpcReact as trpcHooks } from "@/lib/trpc";
-import { AdapterTypeSchema, type AdapterType } from "@rel-ai/shared";
-import { ADAPTER_TYPES, type ProviderResponse } from "../api";
+import { AdapterTypeSchema } from "@rel-ai/shared";
+import { ADAPTER_TYPES, formatAdapterLabel, isAdapterType, type ProviderResponse } from "../api";
 
 const editSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -61,10 +61,10 @@ export function ProviderEditForm({ provider, onCancel }: ProviderEditFormProps) 
       </div>
       <div className="space-y-2">
         <Label>Adapter Type</Label>
-        <Select value={adapterType} onValueChange={(v) => { if (ADAPTER_TYPES.includes(v as AdapterType)) setValue("adapterType", v as AdapterType, { shouldValidate: true }); }}>
+        <Select value={adapterType ?? ""} onValueChange={(v) => { if (v && isAdapterType(v)) setValue("adapterType", v, { shouldValidate: true }); }}>
           <SelectTrigger><SelectValue /></SelectTrigger>
           <SelectContent>
-            {ADAPTER_TYPES.map((t) => <SelectItem key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</SelectItem>)}
+            {ADAPTER_TYPES.map((t) => <SelectItem key={t} value={t}>{formatAdapterLabel(t)}</SelectItem>)}
           </SelectContent>
         </Select>
         {errors.adapterType && <p className="text-xs text-destructive">{errors.adapterType.message}</p>}
