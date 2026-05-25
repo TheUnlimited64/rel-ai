@@ -13,7 +13,7 @@ vi.mock("@/lib/trpc", () => {
         name: "Test",
         adapterType: "openai",
         baseUrl: "https://api.openai.com",
-        apiKey: "sk_****",
+        maskedApiKey: "sk_****",
         enabled: true,
         config: null,
         createdAt: "2024-01-01",

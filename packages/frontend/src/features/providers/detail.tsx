@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { trpcReact as trpcHooks } from "@/lib/trpc";
-import { parseProviderResponse, maskApiKey } from "./api";
+import { parseProviderResponse } from "./api";
 import { ProviderEditForm } from "./components/ProviderEditForm";
 import { ProviderConnectionTest } from "./components/ProviderConnectionTest";
 import { ProviderRegenerateKey } from "./components/ProviderRegenerateKey";
@@ -65,7 +65,7 @@ export function ProviderDetailPage() {
                 <span className="text-muted-foreground">Base URL</span><span className="col-span-2">{provider.baseUrl}</span>
               </div>
               <div className="grid grid-cols-3 gap-2 text-sm">
-                <span className="text-muted-foreground">API Key</span><span className="col-span-2 font-mono">{maskApiKey(provider.apiKey)}</span>
+                <span className="text-muted-foreground">API Key</span><span className="col-span-2 font-mono">{provider.maskedApiKey}</span>
               </div>
               {provider.config && (
                 <div className="grid grid-cols-3 gap-2 text-sm">

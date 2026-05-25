@@ -9,7 +9,7 @@ export const ProviderResponseSchema = z.object({
   name: z.string(),
   adapterType: AdapterTypeSchema,
   baseUrl: z.string(),
-  apiKey: z.string(),
+  maskedApiKey: z.string(),
   enabled: z.boolean(),
   config: z.string().nullable(),
   createdAt: z.string(),
