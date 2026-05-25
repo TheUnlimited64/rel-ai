@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { ENDPOINT_PATH_REGEX, ENDPOINT_PATH_MESSAGE } from "@llmpack/shared";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,7 +11,7 @@ import type { EndpointGetResponse, ModelListResponse } from "../api";
 
 const editSchema = z.object({
   name: z.string().min(1, "Name is required"),
-  path: z.string().min(1, "Path is required").regex(/^[a-z0-9-]+$/, "Only lowercase letters, numbers, and hyphens"),
+  path: z.string().min(1, "Path is required").regex(ENDPOINT_PATH_REGEX, ENDPOINT_PATH_MESSAGE),
 });
 type EditFormValues = z.infer<typeof editSchema>;
 

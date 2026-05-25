@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure } from "../trpc.js";
+import { EndpointPathSchema } from "@llmpack/shared";
 import {
   createEndpoint,
   listEndpoints,
@@ -10,30 +11,18 @@ import {
   regenerateEndpointToken,
   getEndpointModels,
 } from "../../core/endpoint/service.js";
-
-async function mapNotFound<T>(fn: () => Promise<T>): Promise<T> {
-  try {
-    return await fn();
-  } catch (e) {
-    if (e instanceof Error && e.message === "NOT_FOUND") {
-      throw new TRPCError({ code: "NOT_FOUND", message: "NOT_FOUND" });
-    }
-    throw e;
-  }
-}
-
-const PathSchema = z.string().regex(/^[a-z0-9-]+$/, "Path must be lowercase alphanumeric with hyphens");
+import { mapNotFound } from "./utils.js";
 
 const CreateEndpointInputSchema = z.object({
   name: z.string().min(1),
-  path: PathSchema,
+  path: EndpointPathSchema,
   modelIds: z.array(z.string()).default([]),
 });
 
 const UpdateEndpointInputSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1).optional(),
-  path: PathSchema.optional(),
+  path: EndpointPathSchema.optional(),
   enabled: z.boolean().optional(),
   modelIds: z.array(z.string()).optional(),
 });

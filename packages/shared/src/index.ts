@@ -16,7 +16,10 @@ export {
 
 export {
   EndpointSchema,
+  EndpointPathSchema,
   CreateEndpointSchema,
+  ENDPOINT_PATH_REGEX,
+  ENDPOINT_PATH_MESSAGE,
   type Endpoint,
   type CreateEndpoint,
 } from "./schemas/endpoint.js";
