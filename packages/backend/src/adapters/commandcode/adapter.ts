@@ -1,6 +1,5 @@
 import type { Message, ParsedChunk, ProviderError, TokenUsage, ContentPart } from "../../core/provider/types.js";
 import type { ProviderAdapter, TestConnectionResult } from "../../core/provider/adapter.js";
-import { debugLog } from "../../core/proxy/debug-logger.js";
 
 function contentToString(content: string | ContentPart[] | null): string {
   if (content === null) return "";
@@ -187,9 +186,6 @@ export class CommandCodeAdapter implements ProviderAdapter {
 
     const generatePath = "/alpha/generate";
     const url = baseUrl.endsWith(generatePath) ? baseUrl : `${baseUrl}${generatePath}`;
-    debugLog("cc-createRequest", { baseUrl, finalUrl: url, model: params.model, toolsCount: tools.length });
-    debugLog("cc-request-body", { bodyPreview: JSON.stringify(body).slice(0, 1000) });
-
     return {
       url,
       headers: {
@@ -207,7 +203,6 @@ export class CommandCodeAdapter implements ProviderAdapter {
   }
 
   parseSSEChunk(chunk: string): ParsedChunk | null {
-    debugLog("cc-parseSSEChunk-input", { chunkLen: chunk.length, preview: chunk.slice(0, 500) });
     // LDJSON format: bare JSON lines (NOT SSE with data: prefix)
     // Also handle data:-prefixed lines as fallback
     const lines = chunk.split("\n");
@@ -268,7 +263,6 @@ export class CommandCodeAdapter implements ProviderAdapter {
     }
 
     if (content === undefined && thinking === undefined && !done && usage === undefined) {
-      debugLog("cc-parseSSEChunk-result", { result: "null" });
       return null;
     }
 
@@ -278,7 +272,6 @@ export class CommandCodeAdapter implements ProviderAdapter {
       done,
       ...(usage !== undefined ? { usage } : {}),
     };
-    debugLog("cc-parseSSEChunk-result", result);
     return {
       ...(content !== undefined ? { content } : {}),
       ...(thinking !== undefined ? { thinking } : {}),
@@ -293,7 +286,6 @@ export class CommandCodeAdapter implements ProviderAdapter {
 
     try {
       const text = await response.text();
-      debugLog("cc-parseError", { status: response.status, body: text.slice(0, 500) });
       try {
         const body = JSON.parse(text) as {
           error?: { code?: string; message?: string; status?: number };

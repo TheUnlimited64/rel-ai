@@ -3,7 +3,6 @@ import type { ProviderAdapter } from "../provider/adapter.js";
 import type { ProviderError as PProviderError } from "../provider/types.js";
 import { ModelResolver } from "../model/resolver.js";
 import { AdapterRegistry } from "../provider/registry.js";
-import { debugLog } from "./debug-logger.js";
 import {
   ModelNotFoundError,
   AllProvidersFailedError,
@@ -152,8 +151,6 @@ export class ProxyHandler {
         overrides: mergedOverrides,
       });
 
-      debugLog("provider-request", { url: providerRequest.url, adapterType, providerModel });
-
       let response: Response;
       try {
         response = await this.fetchWithTimeout(providerRequest.url, {
@@ -190,7 +187,6 @@ export class ProxyHandler {
 
       // Handle provider errors
       if (!response.ok) {
-        debugLog("provider-error", { url: providerRequest.url, status: response.status, adapterType });
         let providerError: PProviderError;
         try {
           providerError = await adapter.parseError(response);
@@ -322,21 +318,17 @@ export class ProxyHandler {
           try {
             for (;;) {
               const { done, value } = await reader.read();
-              debugLog("stream-read", { done, bytes: value?.length ?? 0 });
               if (done) break;
 
               buffer += decoder.decode(value, { stream: true });
-              debugLog("stream-raw", { bufferPreview: buffer.slice(0, 500), bufferLen: buffer.length });
               const delimiter = adapter.streamDelimiter ?? "\n\n";
               const parts = buffer.split(delimiter);
-              debugLog("stream-split", { delimiter: JSON.stringify(delimiter), partsCount: parts.length, bufferLen: buffer.length });
               // Keep last incomplete part in buffer
               buffer = parts.pop() ?? "";
 
               for (const part of parts) {
                 if (!part.trim()) continue;
                 const parsed = adapter.parseSSEChunk(part);
-                debugLog("stream-chunk", { partLen: part.length, parsed: parsed ? { content: !!parsed.content, done: parsed.done, thinking: !!parsed.thinking, toolCalls: !!parsed.tool_calls } : null });
                 if (!parsed) continue;
 
                 if (parsed.usage) {
@@ -405,7 +397,6 @@ export class ProxyHandler {
               endpointId,
             });
           } catch (err) {
-            debugLog("stream-error", { message: err instanceof Error ? err.message : String(err), stack: err instanceof Error ? err.stack : undefined });
             if (!hadError) {
               hadError = true;
               void reader.cancel();
