@@ -2,10 +2,18 @@
   "active_plan": "/home/default/projects/llmpack_v2/.sisyphus/plans/rel-ai-fix-all-tickets.md",
   "started_at": "2026-05-25T13:20:18.276Z",
   "session_ids": [
-    "ses_1a0b4e4b3ffefzzeNyWfikRwz2"
+    "ses_1a0b4e4b3ffefzzeNyWfikRwz2",
+    "ses_1a087e800ffeKTKKewlPNYJ3NR",
+    "ses_1a087c959ffeJJz8zMKZcBWZUz",
+    "ses_1a087aba1ffeSzPcvr6S0nO9S9",
+    "ses_1a0878563ffeDVA66IDpkliSOb"
   ],
   "session_origins": {
-    "ses_1a0b4e4b3ffefzzeNyWfikRwz2": "direct"
+    "ses_1a0b4e4b3ffefzzeNyWfikRwz2": "direct",
+    "ses_1a087e800ffeKTKKewlPNYJ3NR": "appended",
+    "ses_1a087c959ffeJJz8zMKZcBWZUz": "appended",
+    "ses_1a087aba1ffeSzPcvr6S0nO9S9": "appended",
+    "ses_1a0878563ffeDVA66IDpkliSOb": "appended"
   },
   "plan_name": "rel-ai-fix-all-tickets",
   "agent": "atlas",
@@ -14,10 +22,10 @@
       "task_key": "final-wave:f1",
       "task_label": "F1",
       "task_title": "**Plan Compliance Audit** — `oracle`",
-      "session_id": "ses_1a0abdd85ffeHCb0KjmH1zjqUE",
+      "session_id": "ses_1a0827e89ffempbK5WtgvSKkWe",
       "agent": "Sisyphus-Junior",
       "category": "quick",
-      "updated_at": "2026-05-25T13:31:03.611Z"
+      "updated_at": "2026-05-25T14:17:16.612Z"
     }
   }
 }

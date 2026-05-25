@@ -761,7 +761,7 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
   - Files: `packages/backend/src/routes/proxy.ts`, test file
   - Pre-commit: `bun test packages/backend/`
 
-- [ ] 11. T039 — Expand ChatCompletionSchema to accept all OpenAI params
+- [x] 11. T039 — Expand ChatCompletionSchema to accept all OpenAI params
 
   **What to do**:
   - Add `.passthrough()` to `ChatCompletionSchema` in `packages/backend/src/routes/proxy.ts:11-22` so unknown params pass through instead of being stripped
@@ -822,7 +822,7 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
   - Files: `packages/backend/src/routes/proxy.ts`, test file
   - Pre-commit: `bun test packages/backend/`
 
-- [ ] 12. T047 — Pass request ID from proxy to handler
+- [x] 12. T047 — Pass request ID from proxy to handler
 
   **What to do**:
   - In `packages/backend/src/routes/proxy.ts`, generate a request ID and pass it to ProxyHandler
@@ -870,7 +870,7 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
   - Files: `packages/backend/src/routes/proxy.ts`, `packages/backend/src/core/proxy/handler.ts`, test file
   - Pre-commit: `bun test packages/backend/`
 
-- [ ] 13. T056 — Fix handleNonStream text matching too broad
+- [x] 13. T056 — Fix handleNonStream text matching too broad
 
   **What to do**:
   - Fix the overly broad text matching in `packages/backend/src/core/proxy/handler.ts` in the `handleNonStream` function
@@ -966,7 +966,7 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
 
 ## Wave 4 — Server Infrastructure + CORS + Shutdown
 
-- [ ] 15. T044 — Add CORS configuration
+- [x] 15. T044 — Add CORS configuration
 
   **What to do**:
   - Add CORS middleware to `packages/backend/src/server.ts` using Hono's built-in CORS middleware
@@ -1016,7 +1016,7 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
   - Files: `packages/backend/src/server.ts`, test file
   - Pre-commit: `bun test packages/backend/`
 
-- [ ] 16. T064 — Add graceful shutdown for in-flight streams
+- [x] 16. T064 — Add graceful shutdown for in-flight streams
 
   **What to do**:
   - In `packages/backend/src/server.ts`, add signal handlers (SIGTERM, SIGINT) that drain in-flight requests before shutting down
@@ -1065,7 +1065,7 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
   - Files: `packages/backend/src/server.ts`, test file
   - Pre-commit: `bun test packages/backend/`
 
-- [ ] 17. T054 — Abort upstream request on client disconnect
+- [x] 17. T054 — Abort upstream request on client disconnect
 
   **What to do**:
   - In `packages/backend/src/core/proxy/handler.ts`, detect client disconnect and abort the upstream request using AbortController
@@ -1110,7 +1110,7 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
   - Files: `packages/backend/src/core/proxy/handler.ts`, test file
   - Pre-commit: `bun test packages/backend/`
 
-- [ ] 18. T071 — Cancel stream reader on error
+- [x] 18. T071 — Cancel stream reader on error
 
   **What to do**:
   - In `packages/backend/src/core/proxy/handler.ts`, ensure the ReadableStream reader is cancelled in error paths
@@ -1155,7 +1155,7 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
   - Files: `packages/backend/src/core/proxy/handler.ts`, test file
   - Pre-commit: `bun test packages/backend/`
 
-- [ ] 19. T061 — Fix inconsistent auth header parsing
+- [x] 19. T061 — Fix inconsistent auth header parsing
 
   **What to do**:
   - Unify auth header parsing in `packages/backend/src/routes/proxy.ts` — use a single function to extract Bearer token
@@ -1206,7 +1206,7 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
 
 ## Wave 5 — Type Safety + Code Quality (Backend Services)
 
-- [ ] 20. T048 — Document sync DB tradeoff in service files
+- [x] 20. T048 — Document sync DB tradeoff in service files
 
   **What to do**:
   - Add code comments in `packages/backend/src/core/provider/service.ts`, `endpoint/service.ts`, `model/service.ts` documenting the sync DB call tradeoff
@@ -1253,7 +1253,7 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
   - Files: `packages/backend/src/core/provider/service.ts`, `packages/backend/src/core/endpoint/service.ts`, `packages/backend/src/core/model/service.ts`
   - Pre-commit: `bun test packages/backend/`
 
-- [ ] 21. T049 — Fix N+1 endpoint queries
+- [x] 21. T049 — Fix N+1 endpoint queries
 
   **What to do**:
   - Replace the N+1 query pattern in `packages/backend/src/core/endpoint/service.ts` with a single JOIN query
@@ -1300,7 +1300,7 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
   - Files: `packages/backend/src/core/endpoint/service.ts`, test file
   - Pre-commit: `bun test packages/backend/`
 
-- [ ] 22. T050 — Deduplicate mapNotFound utility
+- [x] 22. T050 — Deduplicate mapNotFound utility
 
   **What to do**:
   - Extract the duplicated `mapNotFound` utility in `packages/backend/src/api/routers/providers.ts` and `endpoints.ts` into a shared location
@@ -1347,7 +1347,7 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
   - Files: `packages/backend/src/api/routers/providers.ts`, `packages/backend/src/api/routers/endpoints.ts`, new shared file, test file
   - Pre-commit: `bun test packages/backend/`
 
-- [ ] 23. T051 — Remove module-level side effects from index.ts
+- [x] 23. T051 — Remove module-level side effects from index.ts
 
   **What to do**:
   - Remove side effects at module level in `packages/backend/src/index.ts` (e.g., console.log in tRPC middleware)
@@ -1393,7 +1393,7 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
   - Files: `packages/backend/src/index.ts`, `packages/backend/src/api/trpc.ts`, test file
   - Pre-commit: `bun test packages/backend/`
 
-- [ ] 24. T053 — Fix endpoint path regex mismatch
+- [x] 24. T053 — Fix endpoint path regex mismatch
 
   **What to do**:
   - Fix the regex mismatch between shared schema validation and backend router in `packages/shared/src/schemas/endpoint.ts` and `packages/backend/src/api/routers/endpoints.ts`
@@ -1439,7 +1439,7 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
   - Files: `packages/shared/src/schemas/endpoint.ts`, `packages/backend/src/api/routers/endpoints.ts`, test file
   - Pre-commit: `bun test packages/backend/ && bun test packages/shared/`
 
-- [ ] 25. T057 — Cache checkFirstRun result
+- [x] 25. T057 — Cache checkFirstRun result
 
   **What to do**:
   - Cache the result of `checkFirstRun()` in `packages/backend/src/core/auth/` so it doesn't query DB on every request
@@ -1487,7 +1487,7 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
   - Files: `packages/backend/src/core/auth/`, test file
   - Pre-commit: `bun test packages/backend/`
 
-- [ ] 26. T062 — Reuse TextEncoder across chunks
+- [x] 26. T062 — Reuse TextEncoder across chunks
 
   **What to do**:
   - Replace per-chunk `new TextEncoder()` with a module-level reusable instance in the streaming code
@@ -1531,7 +1531,7 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
   - Files: `packages/backend/src/core/proxy/`, test file
   - Pre-commit: `bun test packages/backend/`
 
-- [ ] 27. T063 — Fix mergeUsage token arithmetic
+- [x] 27. T063 — Fix mergeUsage token arithmetic
 
   **What to do**:
   - Fix token arithmetic in `mergeUsage` function — ensure prompt_tokens, completion_tokens, total_tokens are correctly summed
@@ -1575,7 +1575,7 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
   - Files: `packages/backend/src/core/proxy/`, test file
   - Pre-commit: `bun test packages/backend/`
 
-- [ ] 28. T065 — Use crypto.getRandomValues for apiKey prefix
+- [x] 28. T065 — Use crypto.getRandomValues for apiKey prefix
 
   **What to do**:
   - Replace hardcoded prefix in apiKey generation in `packages/backend/src/core/provider/service.ts` with `crypto.getRandomValues()`
@@ -1620,7 +1620,7 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
   - Files: `packages/backend/src/core/provider/service.ts`, test file
   - Pre-commit: `bun test packages/backend/`
 
-- [ ] 29. T066 — Use performance.now for latency measurement
+- [x] 29. T066 — Use performance.now for latency measurement
 
   **What to do**:
   - Replace `Date.now()` with `performance.now()` for latency measurement in `packages/backend/src/core/proxy/`
@@ -1665,7 +1665,7 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
   - Files: `packages/backend/src/core/proxy/`, test file
   - Pre-commit: `bun test packages/backend/`
 
-- [ ] 30. T072 — Fix mapServiceError sync catch
+- [x] 30. T072 — Fix mapServiceError sync catch
 
   **What to do**:
   - Fix `mapServiceError` in `packages/backend/src/core/proxy/` to catch async rejections, not just synchronous errors
@@ -1714,7 +1714,7 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
 
 ## Wave 6 — Frontend Fixes
 
-- [ ] 31. T045 — Fix useParams non-null assertion
+- [x] 31. T045 — Fix useParams non-null assertion
 
   **What to do**:
   - Replace `useParams().id!` non-null assertions in frontend detail pages with proper null checks
@@ -1763,7 +1763,7 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
   - Files: `packages/frontend/src/features/endpoints/detail.tsx`, `packages/frontend/src/features/providers/detail.tsx`, `packages/frontend/src/features/models/detail.tsx`, test files
   - Pre-commit: `cd packages/frontend && npx vitest run`
 
-- [ ] 32. T046 — Fix unsafe provider response casts
+- [x] 32. T046 — Fix unsafe provider response casts
 
   **What to do**:
   - Replace unsafe type casts in `packages/frontend/src/features/providers/` with proper type guards
@@ -1809,7 +1809,7 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
   - Files: `packages/frontend/src/features/providers/`, test file
   - Pre-commit: `cd packages/frontend && npx vitest run`
 
-- [ ] 33. T055 — Fix non-null assertion in log formatting
+- [x] 33. T055 — Fix non-null assertion in log formatting
 
   **What to do**:
   - Replace non-null assertions in `packages/backend/src/core/logging/` with proper null checks
@@ -1854,7 +1854,7 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
   - Files: `packages/backend/src/core/logging/`, test file
   - Pre-commit: `bun test packages/backend/`
 
-- [ ] 34. T069 — Fix customFetch swallowing non-401 errors
+- [x] 34. T069 — Fix customFetch swallowing non-401 errors
 
   **What to do**:
   - In `packages/frontend/src/lib/trpc.ts`, fix the customFetch to only handle 401 specifically, not swallow all non-200 responses
@@ -1901,7 +1901,7 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
   - Files: `packages/frontend/src/lib/trpc.ts`, test file
   - Pre-commit: `cd packages/frontend && npx vitest run`
 
-- [ ] 35. T068 — Fix format mutation error any type
+- [x] 35. T068 — Fix format mutation error any type
 
   **What to do**:
   - Type the error in mutation onError handlers properly instead of using `any`
@@ -1946,7 +1946,7 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
   - Files: `packages/frontend/src/lib/trpc.ts`, test file
   - Pre-commit: `cd packages/frontend && npx vitest run`
 
-- [ ] 36. T059 — Fix RequireAuth render redirect race
+- [x] 36. T059 — Fix RequireAuth render redirect race
 
   **What to do**:
   - Fix the race condition in `packages/frontend/src/features/auth/` RequireAuth component
@@ -1991,7 +1991,7 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
   - Files: `packages/frontend/src/features/auth/`, test file
   - Pre-commit: `cd packages/frontend && npx vitest run`
 
-- [ ] 37. T058 — Fix 401 redirect race with concurrent requests
+- [x] 37. T058 — Fix 401 redirect race with concurrent requests
 
   **What to do**:
   - Fix concurrent 401 handling in `packages/frontend/src/lib/auth.tsx` — multiple simultaneous 401s should not cause multiple redirects
@@ -2036,7 +2036,7 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
   - Files: `packages/frontend/src/lib/auth.tsx`, test file
   - Pre-commit: `cd packages/frontend && npx vitest run`
 
-- [ ] 38. T060 — Remove provider apiKey from frontend type
+- [x] 38. T060 — Remove provider apiKey from frontend type
 
   **What to do**:
   - Remove apiKey field from frontend-facing provider type (it should only exist in backend/shared types with proper protection)
@@ -2083,7 +2083,7 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
   - Files: `packages/shared/src/schemas/provider.ts`, `packages/backend/src/api/routers/providers.ts`, test file
   - Pre-commit: `cd packages/frontend && npx vitest run && bun test packages/backend/`
 
-- [ ] 39. T067 — Fix e2e auth state plain JSON
+- [x] 39. T067 — Fix e2e auth state plain JSON
 
   **What to do**:
   - Fix auth state storage in e2e tests — use proper Playwright storageState instead of plain JSON
@@ -2128,7 +2128,7 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
   - Files: `packages/frontend/tests/`, test file
   - Pre-commit: `cd packages/frontend && npx playwright test`
 
-- [ ] 40. T073 — Fix toggle mutation stale cache
+- [x] 40. T073 — Fix toggle mutation stale cache
 
   **What to do**:
   - Fix cache invalidation for toggle mutations in frontend features
@@ -2177,7 +2177,7 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
 
 ## Wave 7 — More Quality + Docker Start
 
-- [ ] 41. T074 — Fix query cache onError background refetch
+- [x] 41. T074 — Fix query cache onError background refetch
 
   **What to do**:
   - Fix the onError handler in query cache that triggers background refetch
@@ -2190,7 +2190,7 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
   **References**: `.tickets/T074-query-cache-onerror-background-refetch.md`, `packages/frontend/src/`
   **Commit**: YES — `fix(T074): Fix query cache onError background refetch`
 
-- [ ] 42. T085 — Add concurrent guard to toggle endpoint
+- [x] 42. T085 — Add concurrent guard to toggle endpoint
 
   **What to do**:
   - Add a concurrent request guard to prevent double-toggling endpoints
@@ -2203,7 +2203,7 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
   **References**: `.tickets/T085-toggle-endpoint-no-concurrent-guard.md`, `packages/frontend/src/features/endpoints/`
   **Commit**: YES — `fix(T085): Add concurrent guard to endpoint toggle`
 
-- [ ] 43. T084 — Add frozen-lockfile check to CI
+- [x] 43. T084 — Add frozen-lockfile check to CI
 
   **What to do**:
   - Add `bun install --frozen-lockfile` check to CI pipeline (if one exists) or create a CI config
@@ -2216,7 +2216,7 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
   **References**: `.tickets/T084-caret-ranges-no-lockfile-ci.md`, `package.json`, `bun.lock`
   **Commit**: YES — `fix(T084): Add frozen-lockfile enforcement to CI pipeline`
 
-- [ ] 44. T043 — Pin Docker base image version
+- [x] 44. T043 — Pin Docker base image version
 
   **What to do**:
   - Replace `FROM bun:latest` with a specific version like `FROM bun:1.1.38-alpine` in the Dockerfile
@@ -2232,7 +2232,7 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
 
 ## Wave 8 — Docker Hardening (sequential — same Dockerfile)
 
-- [ ] 44. T079 — Fix Dockerfile swallowing install errors
+- [x] 44. T079 — Fix Dockerfile swallowing install errors
 
   **What to do**:
   - Remove `|| true` from install commands in Dockerfile
@@ -2245,7 +2245,7 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
   **References**: `.tickets/T079-dockerfile-swallows-install-errors.md`, `Dockerfile`
   **Commit**: YES — `fix(T079): Remove || true from Dockerfile install commands`
 
-- [ ] 45. T080 — Set NODE_ENV in Docker
+- [x] 45. T080 — Set NODE_ENV in Docker
 
   **What to do**:
   - Add `ENV NODE_ENV=production` to Dockerfile
@@ -2256,7 +2256,7 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
   **References**: `.tickets/T080-node-env-not-set-docker.md`, `Dockerfile`
   **Commit**: YES — `fix(T080): Set NODE_ENV=production in Dockerfile`
 
-- [ ] 46. T081 — Add .dockerignore
+- [x] 46. T081 — Add .dockerignore
 
   **What to do**:
   - Create `.dockerignore` file excluding: node_modules, .git, .tickets, .sisyphus, tests, docs, *.md (except needed for build)
@@ -2267,7 +2267,7 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
   **References**: `.tickets/T081-no-dockerignore.md`
   **Commit**: YES — `fix(T081): Add .dockerignore to reduce build context`
 
-- [ ] 47. T082 — Add Docker logging configuration
+- [x] 47. T082 — Add Docker logging configuration
 
   **What to do**:
   - Add logging configuration to docker-compose.yml
@@ -2279,7 +2279,7 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
   **References**: `.tickets/T082-no-docker-logging.md`, `docker-compose.yml`
   **Commit**: YES — `fix(T082): Add logging configuration to docker-compose`
 
-- [ ] 48. T083 — Fix frontend package.json in Docker build
+- [x] 48. T083 — Fix frontend package.json in Docker build
 
   **What to do**:
   - Fix the misconfigured frontend package.json that causes Docker build issues
@@ -2290,7 +2290,7 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
   **References**: `.tickets/T083-frontend-pkg-json-misconfig.md`, `packages/frontend/package.json`, `Dockerfile`
   **Commit**: YES — `fix(T083): Fix frontend package.json for Docker build`
 
-- [ ] 49. T076 — Add Docker healthcheck
+- [x] 49. T076 — Add Docker healthcheck
 
   **What to do**:
   - Add HEALTHCHECK instruction to Dockerfile or docker-compose.yml
@@ -2302,7 +2302,7 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
   **References**: `.tickets/T076-no-docker-healthcheck.md`, `Dockerfile`, `docker-compose.yml`
   **Commit**: YES — `fix(T076): Add Docker healthcheck`
 
-- [ ] 50. T077 — Bind to specific interface, not 0.0.0.0
+- [x] 50. T077 — Bind to specific interface, not 0.0.0.0
 
   **What to do**:
   - Change default server bind from 0.0.0.0 to 127.0.0.1 (or configurable via env)
@@ -2314,7 +2314,7 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
   **References**: `.tickets/T077-port-bound-all-interfaces.md`, `packages/backend/src/server.ts`, `docker-compose.yml`
   **Commit**: YES — `fix(T077): Bind to localhost by default, keep Docker on 0.0.0.0`
 
-- [ ] 51. T078 — Document encryption key env var usage
+- [x] 51. T078 — Document encryption key env var usage
 
   **What to do**:
   - Add clear documentation about ENCRYPTION_KEY env var requirement
@@ -2331,7 +2331,7 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
 
 ## Wave 9 — Feature Requests
 
-- [ ] 52. T086 — Add CommandCode adapter
+- [x] 52. T086 — Add CommandCode adapter
 
   **What to do**:
   - Implement a new adapter for CommandCode (or similar) provider in `packages/backend/src/core/proxy/adapters/`
@@ -2373,7 +2373,7 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
   - Files: New adapter file, `registry.ts`, schema file, test file
   - Pre-commit: `bun test packages/backend/`
 
-- [ ] 53. T088 — Add password auth to admin UI (absorbs T038)
+- [x] 53. T088 — Add password auth to admin UI (absorbs T038)
 
   **What to do**:
   - Add password-based authentication to the admin UI, replacing Bearer token auth for the admin panel
@@ -2433,19 +2433,19 @@ Wave FINAL (After ALL tasks — 4 parallel reviews):
 
 > 4 review agents run in PARALLEL. ALL must APPROVE. Present consolidated results to user and get explicit "okay" before completing.
 
-- [ ] F1. **Plan Compliance Audit** — `oracle`
+- [x] F1. **Plan Compliance Audit** — `oracle`
   Read the plan end-to-end. For each "Must Have": verify implementation exists (read file, curl endpoint, run command). For each "Must NOT Have": search codebase for forbidden patterns — reject with file:line if found. Check evidence files exist in .sisyphus/evidence/. Compare deliverables against plan.
   Output: `Must Have [N/N] | Must NOT Have [N/N] | Tasks [N/N] | VERDICT: APPROVE/REJECT`
 
-- [ ] F2. **Code Quality Review** — `unspecified-high`
+- [x] F2. **Code Quality Review** — `unspecified-high`
   Run `tsc --noEmit` + linter + `bun test packages/backend/` + `npx vitest run packages/frontend/`. Review all changed files for: `as any`/`@ts-ignore`, empty catches, console.log in prod, commented-out code, unused imports. Check AI slop: excessive comments, over-abstraction, generic names.
   Output: `Build [PASS/FAIL] | Lint [PASS/FAIL] | Tests [N pass/N fail] | Files [N clean/N issues] | VERDICT`
 
-- [ ] F3. **Real Manual QA** — `unspecified-high` (+ `playwright` skill if UI)
+- [x] F3. **Real Manual QA** — `unspecified-high` (+ `playwright` skill if UI)
   Start from clean state. Execute EVERY QA scenario from EVERY task — follow exact steps, capture evidence. Test cross-ticket integration. Test edge cases: empty state, invalid input, rapid actions. Save to `.sisyphus/evidence/final-qa/`.
   Output: `Scenarios [N/N pass] | Integration [N/N] | Edge Cases [N tested] | VERDICT`
 
-- [ ] F4. **Scope Fidelity Check** — `deep`
+- [x] F4. **Scope Fidelity Check** — `deep`
   For each task: read "What to do", read actual diff (git log/diff). Verify 1:1 — everything in spec was built (no missing), nothing beyond spec was built (no creep). Check "Must NOT do" compliance. Detect cross-task contamination. Flag unaccounted changes.
   Output: `Tasks [N/N compliant] | Contamination [CLEAN/N issues] | Unaccounted [CLEAN/N files] | VERDICT`
 
@@ -2490,10 +2490,10 @@ git log --oneline | grep "fix(T0"   # Expected: 52 fix commits
 ```
 
 ### Final Checklist
-- [ ] All "Must Have" present
-- [ ] All "Must NOT Have" absent
-- [ ] All backend tests pass (`bun test packages/backend/`)
-- [ ] All frontend tests pass (`cd packages/frontend && npx vitest run`)
-- [ ] All 52 ticket files moved to `.tickets/done/`
-- [ ] Each ticket has exactly one commit
-- [ ] No regressions in existing functionality
+- [x] All "Must Have" present
+- [x] All "Must NOT Have" absent
+- [x] All backend tests pass (`bun test packages/backend/`)
+- [x] All frontend tests pass (`cd packages/frontend && npx vitest run`)
+- [x] All 52 ticket files moved to `.tickets/done/`
+- [x] Each ticket has exactly one commit
+- [x] No regressions in existing functionality
