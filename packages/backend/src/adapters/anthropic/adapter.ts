@@ -11,6 +11,12 @@ export class AnthropicAdapter implements ProviderAdapter {
     overrides?: Record<string, unknown>;
   }): { url: string; headers: Record<string, string>; body: unknown } {
     const { model, messages, stream, overrides } = params;
+
+    if (!overrides?.apiKey || typeof overrides.apiKey !== "string" || overrides.apiKey.trim() === "") {
+      throw new Error("Anthropic API key is required");
+    }
+
+    const apiKey = overrides.apiKey;
     const baseUrl = (overrides?.baseUrl as string) ?? "https://api.anthropic.com";
 
     const systemMessage = messages
@@ -38,7 +44,7 @@ export class AnthropicAdapter implements ProviderAdapter {
     return {
       url: `${baseUrl}/v1/messages`,
       headers: {
-        "x-api-key": overrides?.apiKey as string,
+        "x-api-key": apiKey,
         "anthropic-version": "2023-06-01",
         "Content-Type": "application/json",
       },

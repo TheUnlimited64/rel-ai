@@ -84,6 +84,60 @@ describe("AnthropicAdapter", () => {
       const body = result.body as Record<string, unknown>;
       expect(body.system).toBeUndefined();
     });
+
+    test("throws descriptive error when apiKey is missing", () => {
+      expect(() =>
+        adapter.createRequest({
+          model: "claude-3-sonnet",
+          messages: [{ role: "user", content: "Hello" }],
+          stream: true,
+        })
+      ).toThrow("Anthropic API key is required");
+    });
+
+    test("throws descriptive error when apiKey is undefined", () => {
+      expect(() =>
+        adapter.createRequest({
+          model: "claude-3-sonnet",
+          messages: [{ role: "user", content: "Hello" }],
+          stream: true,
+          overrides: { apiKey: undefined },
+        })
+      ).toThrow("Anthropic API key is required");
+    });
+
+    test("throws descriptive error when apiKey is empty string", () => {
+      expect(() =>
+        adapter.createRequest({
+          model: "claude-3-sonnet",
+          messages: [{ role: "user", content: "Hello" }],
+          stream: true,
+          overrides: { apiKey: "  " },
+        })
+      ).toThrow("Anthropic API key is required");
+    });
+
+    test("throws descriptive error when apiKey is non-string type", () => {
+      expect(() =>
+        adapter.createRequest({
+          model: "claude-3-sonnet",
+          messages: [{ role: "user", content: "Hello" }],
+          stream: true,
+          overrides: { apiKey: 12345 },
+        })
+      ).toThrow("Anthropic API key is required");
+    });
+
+    test("sets x-api-key header when apiKey is valid", () => {
+      const result = adapter.createRequest({
+        model: "claude-3-sonnet",
+        messages: [{ role: "user", content: "Hello" }],
+        stream: true,
+        overrides: { apiKey: "sk-valid-key" },
+      });
+
+      expect(result.headers["x-api-key"]).toBe("sk-valid-key");
+    });
   });
 
   describe("parseSSEChunk", () => {
