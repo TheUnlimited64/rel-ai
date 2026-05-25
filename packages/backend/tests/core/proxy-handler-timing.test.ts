@@ -93,4 +93,61 @@ describe("ProxyHandler timing precision", () => {
     expect(Number.isFinite(elapsed)).toBe(true);
     // If elapsed > 0, sub-ms precision confirmed (Date.now would round to 0)
   });
+
+  test("durationMs reflects real elapsed time even with mocked Date.now", async () => {
+    const logs: RequestLogData[] = [];
+    const handler = createHandler((log) => logs.push(log));
+
+    // Mock Date.now but leave performance.now untouched.
+    // Handler uses performance.now(), so durationMs should still be accurate.
+    const originalDateNow = Date.now;
+    let dateNowOffset = 0;
+    const baseDateNow = Date.now();
+    Date.now = () => baseDateNow + dateNowOffset;
+
+    try {
+      const result = await handler.handle({
+        model: "gpt-4",
+        messages: [{ role: "user", content: "Hi" }],
+        stream: false,
+      });
+
+      expect(result.ok).toBe(true);
+      expect(logs.length).toBe(1);
+
+      const duration = logs[0]!.durationMs;
+      expect(duration).toBeGreaterThanOrEqual(0);
+      expect(Number.isFinite(duration)).toBe(true);
+      // Duration should be near-zero since mock fetch resolves instantly
+    } finally {
+      Date.now = originalDateNow;
+    }
+  });
+
+  test("durationMs stays accurate when Date.now is shifted by large offset", async () => {
+    const logs: RequestLogData[] = [];
+    const handler = createHandler((log) => logs.push(log));
+
+    // Shift Date.now by 1 hour — handler uses performance.now() so timing stays correct
+    const originalDateNow = Date.now;
+    Date.now = () => originalDateNow() + 3_600_000;
+
+    try {
+      const result = await handler.handle({
+        model: "gpt-4",
+        messages: [{ role: "user", content: "Hi" }],
+        stream: false,
+      });
+
+      expect(result.ok).toBe(true);
+      expect(logs.length).toBe(1);
+
+      const duration = logs[0]!.durationMs;
+      // Should still be near-zero (mock fetch), NOT 3_600_000
+      expect(duration).toBeLessThan(1000);
+      expect(Number.isFinite(duration)).toBe(true);
+    } finally {
+      Date.now = originalDateNow;
+    }
+  });
 });
