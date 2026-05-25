@@ -7,7 +7,7 @@ import { endpointModels } from "../../src/db/schema/endpoint_models.js";
 import { models } from "../../src/db/schema/models.js";
 import { providers } from "../../src/db/schema/providers.js";
 import { hashToken } from "../../src/core/auth/token.js";
-import { resetEncryptionKey, encrypt } from "../../src/core/auth/encryption.js";
+import { resetEncryptionKey, encrypt, decrypt } from "../../src/core/auth/encryption.js";
 import { createProxyRouter } from "../../src/routes/proxy.js";
 import { ProxyHandler } from "../../src/core/proxy/handler.js";
 import { ModelResolver } from "../../src/core/model/resolver.js";
@@ -16,6 +16,7 @@ import { OpenAIAdapter } from "../../src/adapters/openai/adapter.js";
 import { AnthropicAdapter } from "../../src/adapters/anthropic/adapter.js";
 import type { Model, Provider } from "@rel-ai/shared";
 import type { DbClient } from "../../src/db/connection.js";
+import type { ProxyRequest } from "../../src/core/proxy/types.js";
 
 function setupDb() {
   const db = createMemoryDb();
@@ -665,6 +666,109 @@ describe("Proxy Routes", () => {
           model: "gpt-4",
           messages: [{ role: "tool", content: "result" }],
           stream: false,
+        }),
+      });
+
+      expect(res.status).toBe(400);
+      const body = await res.json() as Record<string, unknown>;
+      expect((body.error as Record<string, unknown>).code).toBe("validation_error");
+    });
+
+    test("passthrough params: temperature, max_tokens forwarded to provider", async () => {
+      const { app, getCapturedRequest } = createCapturingApp(db);
+
+      await app.request(`/v1/${ENDPOINT_PATH}/chat/completions`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${TEST_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "gpt-4",
+          messages: [{ role: "user", content: "Hi" }],
+          temperature: 0.7,
+          max_tokens: 100,
+          top_p: 0.9,
+        }),
+      });
+
+      const captured = getCapturedRequest();
+      expect(captured).toBeDefined();
+      expect(captured!.overrides).toBeDefined();
+      expect((captured!.overrides as Record<string, unknown>).temperature).toBe(0.7);
+      expect((captured!.overrides as Record<string, unknown>).max_tokens).toBe(100);
+      expect((captured!.overrides as Record<string, unknown>).top_p).toBe(0.9);
+    });
+
+    test("passthrough params: tools and tool_choice forwarded", async () => {
+      const { app, getCapturedRequest } = createCapturingApp(db);
+
+      const tools = [
+        {
+          type: "function",
+          function: {
+            name: "get_weather",
+            description: "Get weather",
+            parameters: { type: "object", properties: { location: { type: "string" } } },
+          },
+        },
+      ];
+
+      await app.request(`/v1/${ENDPOINT_PATH}/chat/completions`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${TEST_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "gpt-4",
+          messages: [{ role: "user", content: "Hi" }],
+          tools,
+          tool_choice: "auto",
+        }),
+      });
+
+      const captured = getCapturedRequest();
+      expect(captured).toBeDefined();
+      expect(captured!.overrides).toBeDefined();
+      expect((captured!.overrides as Record<string, unknown>).tools).toEqual(tools);
+      expect((captured!.overrides as Record<string, unknown>).tool_choice).toBe("auto");
+    });
+
+    test("passthrough params: no overrides when only known fields provided", async () => {
+      const { app, getCapturedRequest } = createCapturingApp(db);
+
+      await app.request(`/v1/${ENDPOINT_PATH}/chat/completions`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${TEST_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "gpt-4",
+          messages: [{ role: "user", content: "Hi" }],
+          stream: false,
+        }),
+      });
+
+      const captured = getCapturedRequest();
+      expect(captured).toBeDefined();
+      expect(captured!.overrides).toBeUndefined();
+    });
+
+    test("passthrough params: invalid model still rejected despite extra params", async () => {
+      const app = createTestApp(db);
+
+      const res = await app.request(`/v1/${ENDPOINT_PATH}/chat/completions`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${TEST_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "",
+          messages: [{ role: "user", content: "Hi" }],
+          temperature: 0.5,
         }),
       });
 
