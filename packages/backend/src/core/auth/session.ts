@@ -137,10 +137,15 @@ export async function validatePassword(password: string): Promise<boolean> {
 
 /** Cookie options for the session cookie */
 export function sessionCookieOptions() {
+  const secureOverride = process.env.COOKIE_SECURE;
+  const secure = secureOverride !== undefined
+    ? secureOverride === "true"
+    : process.env.NODE_ENV === "production";
+
   return {
     name: COOKIE_NAME,
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure,
     sameSite: "Lax" as const,
     path: "/",
     maxAge: 7 * 24 * 60 * 60, // 7 days
