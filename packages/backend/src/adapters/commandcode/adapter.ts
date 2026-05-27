@@ -28,7 +28,9 @@ function convertTools(tools?: OpenAITool[]): unknown[] {
 function mapFinishReason(ccReason: string | undefined): string | undefined {
   if (!ccReason) return undefined;
   if (ccReason === "tool-calls") return "tool_calls";
-  return ccReason;
+  // CC sends "other" and other non-standard reasons — map to OpenAI-compatible values
+  const validReasons = new Set(["stop", "tool_calls", "length", "content_filter"]);
+  return validReasons.has(ccReason) ? ccReason : "stop";
 }
 
 type ActiveToolCall = {
@@ -149,7 +151,8 @@ export class CommandCodeAdapter implements ProviderAdapter {
 
     const { system: systemMessage, messages: nonSystemMessages } = this.convertMessages(params.messages);
 
-    const max_tokens = (params.overrides?.max_tokens as number | undefined) ?? 4096;
+    const max_tokens = (params.overrides?.max_tokens as number | undefined) ?? 64000;
+    console.log("[CC-REQ] max_tokens=" + max_tokens + " overrides.max_tokens=" + (params.overrides?.max_tokens ?? "undefined") + " model=" + params.model);
 
     const overrides = params.overrides ?? ({} as Record<string, unknown>);
 
@@ -213,6 +216,7 @@ export class CommandCodeAdapter implements ProviderAdapter {
     let finishReason: string | undefined;
     let done = false;
     let usage: TokenUsage | undefined;
+    let usageMode: import("../../core/provider/types.js").UsageMode | undefined;
 
     for (const line of lines) {
       let trimmed = line.trim();
@@ -253,48 +257,24 @@ export class CommandCodeAdapter implements ProviderAdapter {
         case "reasoning-end":
           break;
 
-        case "tool-input-start": {
-          const callId = parsed.id as string;
-          const toolName = parsed.toolName as string;
-          const idx = this.toolCallIndex++;
-          this.activeToolCalls.set(callId, { index: idx, id: callId, name: toolName });
-          toolCallDeltas.push({
-            index: idx,
-            id: callId,
-            type: "function",
-            function: { name: toolName },
-          });
-          break;
-        }
-
-        case "tool-input-delta": {
-          const callId = parsed.id as string;
-          const delta = parsed.delta as string;
-          const active = this.activeToolCalls.get(callId);
-          if (active) {
-            toolCallDeltas.push({
-              index: active.index,
-              function: { arguments: delta },
-            });
-          }
-          break;
-        }
-
+        case "tool-input-start":
+        case "tool-input-delta":
         case "tool-input-end":
+          // Ignore streaming tool events. CommandCode sends both incremental
+          // tool-input-* events AND a final tool-call event with the complete
+          // arguments. Only the tool-call event is reliable — streaming deltas
+          // can be split across NDJSON lines causing JSON corruption.
+          // Reference: pi-commandcode-provider ignores these too.
           break;
 
         case "tool-call": {
           const toolCallId = parsed.toolCallId as string;
           const toolName = parsed.toolName as string;
           const input = parsed.input as Record<string, unknown> | undefined;
-          let existing = this.activeToolCalls.get(toolCallId);
-          if (!existing) {
-            const idx = this.toolCallIndex++;
-            existing = { index: idx, id: toolCallId, name: toolName };
-            this.activeToolCalls.set(toolCallId, existing);
-          }
+          const idx = this.toolCallIndex++;
+          this.activeToolCalls.set(toolCallId, { index: idx, id: toolCallId, name: toolName });
           toolCallDeltas.push({
-            index: existing.index,
+            index: idx,
             id: toolCallId,
             type: "function",
             function: {
@@ -310,14 +290,12 @@ export class CommandCodeAdapter implements ProviderAdapter {
           break;
 
         case "finish-step": {
-          const rawReason = parsed.finishReason as string | undefined;
-          if (rawReason) {
-            finishReason = mapFinishReason(rawReason);
-          }
-          const stepUsage = this.parseCroppedUsage(parsed.usage as Record<string, unknown> | undefined);
-          if (stepUsage) {
-            usage = stepUsage;
-          }
+          // Do NOT emit finishReason from intermediate steps. CommandCode's
+          // agentic loop sends finish-step after each tool call, but the stream
+          // is still running. Emitting finish_reason: "tool_calls" here tells
+          // OpenAI clients the response is complete, causing them to send a new
+          // request while this stream is still active → connection reset.
+          // Only the final "finish" event's finishReason is authoritative.
           break;
         }
 
@@ -326,6 +304,7 @@ export class CommandCodeAdapter implements ProviderAdapter {
           const rawReason = parsed.finishReason as string | undefined;
           if (rawReason) {
             finishReason = mapFinishReason(rawReason);
+            console.log("[CC-FINISH] raw=" + rawReason + " mapped=" + finishReason);
           }
           const totalUsage = parsed.totalUsage as Record<string, unknown> | undefined;
           if (totalUsage) {
@@ -333,6 +312,7 @@ export class CommandCodeAdapter implements ProviderAdapter {
               promptTokens: (totalUsage.inputTokens as number) ?? 0,
               completionTokens: (totalUsage.outputTokens as number) ?? 0,
             };
+            usageMode = "total";
           }
           break;
         }
@@ -364,6 +344,7 @@ export class CommandCodeAdapter implements ProviderAdapter {
       ...(finishReason !== undefined ? { finish_reason: finishReason } : {}),
       done,
       ...(usage !== undefined ? { usage } : {}),
+      ...(usageMode !== undefined ? { usageMode } : {}),
     };
   }
 

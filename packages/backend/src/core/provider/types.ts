@@ -40,6 +40,7 @@ export type ParsedChunk = {
   finish_reason?: string;
   done: boolean;
   usage?: TokenUsage;
+  usageMode?: UsageMode;
 };
 
 export type ProviderError = {
@@ -53,3 +54,15 @@ export type TokenUsage = {
   promptTokens: number;
   completionTokens: number;
 };
+
+/**
+ * How the usage values in a ParsedChunk should be accumulated.
+ * - "incremental" (default): values represent deltas to add to running totals.
+ *   Used by providers like Anthropic that emit prompt tokens once in message_start
+ *   and output token deltas in message_delta.
+ * - "total": values represent the authoritative running totals at this point.
+ *   Used by providers like CommandCode that emit cumulative totals in a finish event.
+ *   The handler should replace its accumulated usage with the latest total rather
+ *   than adding to it.
+ */
+export type UsageMode = "incremental" | "total";

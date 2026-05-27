@@ -63,7 +63,10 @@ export class ProxyHandler {
     const endpointId = request.endpointId;
 
     const abortController = new AbortController();
-    const onExternalAbort = () => abortController.abort();
+    const onExternalAbort = () => {
+      console.error(`[ABORT] Request ${id} externally aborted at ${performance.now() - start}ms`);
+      abortController.abort();
+    };
     if (request.signal?.aborted) {
       abortController.abort();
     }
@@ -310,17 +313,43 @@ export class ProxyHandler {
     let totalUsage: { promptTokens: number; completionTokens: number } | undefined;
     let lastFinishReason: string | undefined;
     let hadError = false;
+    const accumulatedChunks: any[] = [];
 
     let streamClosed = false;
+    let keepaliveTimer: ReturnType<typeof setInterval> | undefined;
+
     const stream = new ReadableStream<Uint8Array>({
       start: (controller) => {
-        // Push-based pump: continuously read upstream and enqueue downstream.
-        // This avoids the pull() backpressure bug where pull() is never re-invoked
-        // after returning without enqueuing (e.g. when start/start-step produce null).
+        // Unconditional keepalive: send SSE comment every 5s while buffering
+        // so the client sees regular data and doesn't timeout.
+        const KEEPALIVE_INTERVAL_MS = 5_000;
+        let keepaliveCount = 0;
+        keepaliveTimer = setInterval(() => {
+          if (streamClosed) { clearInterval(keepaliveTimer!); return; }
+          try {
+            controller.enqueue(textEncoder.encode(": keepalive\n\n"));
+            keepaliveCount++;
+          } catch {
+            clearInterval(keepaliveTimer!);
+          }
+        }, KEEPALIVE_INTERVAL_MS);
+
+        // Push-based pump: buffer all upstream chunks, then flush at once.
+        // This avoids the real-time streaming timeout issue where the client
+        // connection hangs open for 30-60s during CC's agentic loop.
         const pump = async () => {
           try {
+            let readCount = 0;
+            let lastReadTime = performance.now();
             for (;;) {
               const { done, value } = await reader.read();
+              const now = performance.now();
+              const readGap = now - lastReadTime;
+              lastReadTime = now;
+              readCount++;
+              if (readGap > 3000 || readCount <= 3) {
+                console.log(`[STREAM-READ] ${id} #${readCount} gap=${Math.round(readGap)}ms done=${done} len=${value?.length ?? 0}`);
+              }
               if (done) break;
 
               buffer += decoder.decode(value, { stream: true });
@@ -335,47 +364,61 @@ export class ProxyHandler {
                 if (!parsed) continue;
 
                 if (parsed.usage) {
-                  totalUsage = mergeUsage(totalUsage, parsed.usage);
+                  totalUsage = mergeUsage(totalUsage, parsed.usage, parsed.usageMode);
+                }
+
+                // Emit content/thinking/tool_calls BEFORE checking done.
+                // CC can send tool_call + finish in the same chunk — if we
+                // skip this, the client gets finish_reason without tool data.
+                if (parsed.content || parsed.thinking || parsed.tool_calls) {
+                  if (parsed.tool_calls) {
+                    const tcNames = parsed.tool_calls.map((tc: ToolCallDelta) => `${tc.function?.name}(${tc.id})`).join(', ');
+                    console.log(`[STREAM-TC] ${id} buffering tool_calls: ${tcNames} at ${performance.now() - start}ms`);
+                  }
+                  accumulatedChunks.push(parsed);
                 }
 
                 if (parsed.done) {
                   if (parsed.finish_reason) lastFinishReason = parsed.finish_reason;
+                  if (lastFinishReason && !streamClosed) {
+                    streamClosed = true;
+                    clearInterval(keepaliveTimer!);
+                    console.log(`[STREAM-EARLY-CLOSE] ${id} ${lastFinishReason} at ${performance.now() - start}ms, usage=${JSON.stringify(totalUsage)}`);
+                    reader.cancel().catch(() => {});
+                    break;
+                  }
                   continue;
                 }
 
                 if (parsed.finish_reason) lastFinishReason = parsed.finish_reason;
+              }
+            }
 
+            // Flush remaining buffer
+            if (!streamClosed && buffer.trim()) {
+              const parsed = adapter.parseSSEChunk(buffer);
+              if (parsed) {
+                if (parsed.usage) {
+                  totalUsage = mergeUsage(totalUsage, parsed.usage, parsed.usageMode);
+                }
                 if (parsed.content || parsed.thinking || parsed.tool_calls || parsed.finish_reason) {
-                  const chunk = formatStreamChunk(id, providerModel, parsed);
-                  controller.enqueue(textEncoder.encode(chunk));
+                  accumulatedChunks.push({ ...parsed, done: false });
+                }
+                if (parsed.done && parsed.finish_reason) {
+                  lastFinishReason = parsed.finish_reason;
                 }
               }
             }
-
-            // Stream finished — flush remaining buffer
-            if (streamClosed) return;
             streamClosed = true;
+            clearInterval(keepaliveTimer!);
+
+            // Flush all accumulated chunks to client at once
+            console.log(`[STREAM-FLUSH] ${id} flushing ${accumulatedChunks.length} buffered chunks at ${performance.now() - start}ms`);
             try {
-              if (buffer.trim()) {
-                const parsed = adapter.parseSSEChunk(buffer);
-                if (parsed) {
-                  if (parsed.usage) {
-                    totalUsage = mergeUsage(totalUsage, parsed.usage);
-                  }
-                  if (parsed.content || parsed.thinking || parsed.tool_calls || parsed.finish_reason) {
-                    const chunk = formatStreamChunk(id, providerModel, {
-                      ...parsed,
-                      done: false,
-                    });
-                    controller.enqueue(textEncoder.encode(chunk));
-                  }
-                }
+              for (const chunk of accumulatedChunks) {
+                const formatted = formatStreamChunk(id, providerModel, chunk);
+                controller.enqueue(textEncoder.encode(formatted));
               }
-            } catch {
-              // Best-effort flush
-            }
-            // Send final chunk with done
-            try {
               const finalChunk = formatStreamChunk(id, providerModel, {
                 done: true,
                 finish_reason: lastFinishReason,
@@ -402,9 +445,12 @@ export class ProxyHandler {
           } catch (err) {
             if (!hadError) {
               hadError = true;
+              streamClosed = true;
+              clearInterval(keepaliveTimer!);
               void reader.cancel();
               const correlationId = generateCorrelationId();
               const rawMsg = err instanceof Error ? err.message : "Stream error";
+              console.error(`[STREAM-ERROR] ${id} rawMsg=${rawMsg} at ${performance.now() - start}ms`);
               this.emitLog({
                 model,
                 providerId,
@@ -417,11 +463,13 @@ export class ProxyHandler {
                 endpointId,
                 correlationId,
               });
-              const masked = new Error("An internal error occurred. Please try again later.");
-              masked.name = "StreamError";
-              controller.error(masked);
+              try {
+                controller.error(new Error("An internal error occurred. Please try again later."));
+              } catch {
+                // Controller already closed
+              }
             } else {
-              controller.error(err);
+              try { controller.error(err); } catch { /* already closed */ }
             }
           }
         };
@@ -430,6 +478,8 @@ export class ProxyHandler {
       cancel: async () => {
         if (streamClosed) return;
         streamClosed = true;
+        clearInterval(keepaliveTimer!);
+        console.log(`[STREAM-CANCEL] ${id} downstream cancelled at ${performance.now() - start}ms`);
         try {
           await reader.cancel();
         } catch {
@@ -483,7 +533,7 @@ export class ProxyHandler {
         const parsed = adapter.parseSSEChunk(part);
         if (!parsed) continue;
         if (parsed.content) accumulated += parsed.content;
-        if (parsed.usage) totalUsage = mergeUsage(totalUsage, parsed.usage);
+        if (parsed.usage) totalUsage = mergeUsage(totalUsage, parsed.usage, parsed.usageMode);
         if (parsed.tool_calls) {
           accumulatedToolCalls = [...(accumulatedToolCalls ?? []), ...parsed.tool_calls];
         }
@@ -614,8 +664,10 @@ export function isTimeoutError(err: unknown): err is TimeoutError {
 export function mergeUsage(
   existing: { promptTokens: number; completionTokens: number } | undefined,
   incoming: { promptTokens: number; completionTokens: number },
+  mode?: "incremental" | "total",
 ): { promptTokens: number; completionTokens: number } {
   if (!existing) return { ...incoming };
+  if (mode === "total") return { ...incoming };
   return {
     promptTokens: existing.promptTokens + incoming.promptTokens,
     completionTokens: existing.completionTokens + incoming.completionTokens,
@@ -639,8 +691,8 @@ function mergeToolCallDeltas(deltas: import("../provider/types.js").ToolCallDelt
     } else {
       if (d.id) existing.id = d.id;
       if (d.type) existing.type = d.type;
-      if (d.function?.name) existing.function = { name: d.function.name, arguments: existing.function?.arguments ?? "" };
-      if (d.function?.arguments) existing.function = { name: existing.function?.name ?? "", arguments: (existing.function?.arguments ?? "") + d.function.arguments };
+      if (d.function?.name) existing.function.name = d.function.name;
+      if (d.function?.arguments) existing.function.arguments += d.function.arguments;
     }
   }
   return Array.from(map.values());
