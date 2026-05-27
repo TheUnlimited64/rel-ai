@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure } from "../trpc.js";
-import { EndpointPathSchema } from "@llmpack/shared";
+import { EndpointPathSchema } from "@rel-ai/shared";
 import {
   createEndpoint,
   listEndpoints,
