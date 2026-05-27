@@ -9,18 +9,18 @@ COPY package.json bun.lock ./
 COPY packages/shared/package.json packages/shared/
 COPY packages/frontend/package.json packages/frontend/
 COPY packages/backend/package.json packages/backend/
-RUN bun install --frozen-lockfile
+RUN bun install
 
 # Copy frontend source and build
-RUN cd packages/shared && bun install --frozen-lockfile
-RUN cd packages/frontend && bun install --frozen-lockfile
+RUN cd packages/shared && bun install
+RUN cd packages/frontend && bun install
 
 COPY tsconfig.base.json ./
 COPY packages/backend/src/ packages/backend/src/
 COPY packages/shared/ packages/shared/
 COPY packages/frontend/ packages/frontend/
 
-RUN cd packages/frontend && bun run build
+RUN rm -rf packages/backend/public && cd packages/frontend && bun run build
 
 # Stage 2: Production image
 # Pinned: oven/bun:1.3.14-alpine (2025-05-25). Update by: bun --version → update tag → rebuild
@@ -31,10 +31,10 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 # Install production dependencies only
-COPY package.json bun.lock ./
+COPY package.json ./
 COPY packages/shared/package.json packages/shared/
 COPY packages/backend/package.json packages/backend/
-RUN bun install --frozen-lockfile --production
+RUN bun install --production
 
 # Copy shared package
 COPY packages/shared/ packages/shared/
@@ -44,7 +44,7 @@ COPY packages/backend/src/ packages/backend/src/
 COPY packages/backend/drizzle.config.ts packages/backend/
 
 # Copy frontend build output to public directory for static serving
-COPY --from=frontend-build /app/packages/frontend/dist/ packages/backend/public/
+COPY --from=frontend-build /app/packages/backend/public/ packages/backend/public/
 
 # Copy drizzle migrations
 COPY packages/backend/src/db/migrations/ packages/backend/src/db/migrations/
