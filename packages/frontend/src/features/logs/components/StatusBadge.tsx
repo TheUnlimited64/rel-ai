@@ -3,7 +3,7 @@ import { Badge } from "@/components/ui/badge";
 export function StatusBadge({ status }: { status: string }) {
   if (status === "success") {
     return (
-      <Badge className="bg-green-500/10 text-green-700 border-green-500/30">
+      <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/25">
         {status}
       </Badge>
     );
@@ -13,7 +13,7 @@ export function StatusBadge({ status }: { status: string }) {
   }
   if (status === "rate_limited") {
     return (
-      <Badge className="bg-amber-500/10 text-amber-700 border-amber-500/30">
+      <Badge className="bg-amber-500/10 text-amber-400 border-amber-500/25">
         rate_limited
       </Badge>
     );

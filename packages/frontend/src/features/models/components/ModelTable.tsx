@@ -2,6 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { ModelResponse } from "../api";
+import { Layers } from "lucide-react";
 
 interface ModelTableProps {
   models: ModelResponse[];
@@ -17,35 +18,45 @@ function variantBadge(model: ModelResponse) {
 
 export function ModelTable({ models, onDelete, onClickRow }: ModelTableProps) {
   if (models.length === 0) {
-    return <p className="py-8 text-center text-muted-foreground">No models configured. Add one to get started.</p>;
+    return (
+      <div className="flex flex-col items-center gap-3 py-12 text-center">
+        <Layers className="h-8 w-8 text-muted-foreground/25" />
+        <div className="space-y-1">
+          <p className="text-sm font-medium text-muted-foreground">No models configured</p>
+          <p className="text-xs text-muted-foreground/60">Add a model to route requests to your providers</p>
+        </div>
+      </div>
+    );
   }
 
   return (
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>ID</TableHead>
-          <TableHead>Display Name</TableHead>
-          <TableHead>Type</TableHead>
-          <TableHead>Variant</TableHead>
-          <TableHead>Provider</TableHead>
-          <TableHead className="text-right">Actions</TableHead>
+          <TableHead className="text-xs uppercase tracking-wider">ID</TableHead>
+          <TableHead className="text-xs uppercase tracking-wider">Display Name</TableHead>
+          <TableHead className="text-xs uppercase tracking-wider">Type</TableHead>
+          <TableHead className="text-xs uppercase tracking-wider">Variant</TableHead>
+          <TableHead className="text-xs uppercase tracking-wider">Provider Model</TableHead>
+          <TableHead className="text-right text-xs uppercase tracking-wider">Actions</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {models.map((m) => (
           <TableRow key={m.id} className="cursor-pointer" onClick={() => onClickRow(m.id)}>
-            <TableCell className="font-mono text-xs">{m.id.length > 8 ? `${m.id.slice(0, 8)}…` : m.id}</TableCell>
+            <TableCell className="font-mono text-xs text-muted-foreground">
+              {m.id.length > 8 ? `${m.id.slice(0, 8)}…` : m.id}
+            </TableCell>
             <TableCell className="font-medium">{m.displayName || m.id}</TableCell>
             <TableCell>
               {m.type === "real" ? (
-                <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300">Real</Badge>
+                <Badge className="bg-sky-500/10 text-sky-400 border-sky-500/25">Real</Badge>
               ) : (
-                <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">Virtual</Badge>
+                <Badge className="bg-violet-500/10 text-violet-400 border-violet-500/25">Virtual</Badge>
               )}
             </TableCell>
             <TableCell>{variantBadge(m)}</TableCell>
-            <TableCell className="text-muted-foreground">
+            <TableCell className="font-mono text-xs text-muted-foreground">
               {m.type === "real" ? m.providerModel : "—"}
             </TableCell>
             <TableCell className="text-right">

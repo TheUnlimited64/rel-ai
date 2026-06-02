@@ -42,8 +42,8 @@ export function LogFilters({
 
   return (
     <div className="flex items-end gap-4">
-      <div className="space-y-1">
-        <Label className="text-xs">Date Range</Label>
+      <div className="space-y-1.5">
+        <Label className="text-[10px] uppercase tracking-wider text-muted-foreground/70">Date Range</Label>
         <Select value={datePreset} onValueChange={(v) => onDatePresetChange(v as DatePreset)}>
           <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
           <SelectContent>
@@ -55,8 +55,8 @@ export function LogFilters({
           </SelectContent>
         </Select>
       </div>
-      <div className="space-y-1">
-        <Label className="text-xs">Status</Label>
+      <div className="space-y-1.5">
+        <Label className="text-[10px] uppercase tracking-wider text-muted-foreground/70">Status</Label>
         <Select value={statusFilter} onValueChange={(v) => onStatusChange(v ?? "all")}>
           <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
           <SelectContent>
@@ -67,8 +67,8 @@ export function LogFilters({
           </SelectContent>
         </Select>
       </div>
-      <div className="space-y-1">
-        <Label className="text-xs">Endpoint</Label>
+      <div className="space-y-1.5">
+        <Label className="text-[10px] uppercase tracking-wider text-muted-foreground/70">Endpoint</Label>
         <Select value={endpointId} onValueChange={(v) => onEndpointChange(v ?? "all")}>
           <SelectTrigger className="w-40"><SelectValue placeholder="All" /></SelectTrigger>
           <SelectContent>
@@ -79,8 +79,8 @@ export function LogFilters({
           </SelectContent>
         </Select>
       </div>
-      <div className="space-y-1">
-        <Label className="text-xs">Provider</Label>
+      <div className="space-y-1.5">
+        <Label className="text-[10px] uppercase tracking-wider text-muted-foreground/70">Provider</Label>
         <Select value={providerId} onValueChange={(v) => onProviderChange(v ?? "all")}>
           <SelectTrigger className="w-40"><SelectValue placeholder="All" /></SelectTrigger>
           <SelectContent>

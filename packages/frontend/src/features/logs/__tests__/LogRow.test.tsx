@@ -100,10 +100,10 @@ describe("LogRow", () => {
     );
 
     expect(screen.getByText("Rate limit exceeded")).toBeInTheDocument();
-    expect(screen.getByText("ID:")).toBeInTheDocument();
+    expect(screen.getByText("ID")).toBeInTheDocument();
     expect(screen.getByText("log-2")).toBeInTheDocument();
-    expect(screen.getByText("Prompt Tokens:")).toBeInTheDocument();
-    expect(screen.getByText("Completion Tokens:")).toBeInTheDocument();
+    expect(screen.getByText("Prompt Tokens")).toBeInTheDocument();
+    expect(screen.getByText("Completion Tokens")).toBeInTheDocument();
   });
 
   it("does not show expanded detail when not expanded", () => {

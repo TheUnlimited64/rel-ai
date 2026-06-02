@@ -14,8 +14,8 @@ export function StatsCards({ stats }: { stats: StatsData }) {
       {cards.map((c) => (
         <Card key={c.label}>
           <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">{c.label}</p>
-            <p className="text-2xl font-bold">{c.value}</p>
+            <p className="text-xs tracking-wider text-muted-foreground uppercase">{c.label}</p>
+            <p className="mt-1 font-mono text-2xl font-bold text-foreground">{c.value}</p>
           </CardContent>
         </Card>
       ))}

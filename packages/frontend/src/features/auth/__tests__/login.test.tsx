@@ -29,21 +29,21 @@ describe("LoginPage", () => {
 
   it("renders password input and submit button", () => {
     renderLogin();
-    expect(screen.getByPlaceholderText("Password")).toBeInTheDocument();
-    expect(screen.getByText("Sign In")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Admin password")).toBeInTheDocument();
+    expect(screen.getByText("Sign In →")).toBeInTheDocument();
   });
 
   it("shows error on empty password submission", async () => {
     renderLogin();
-    await userEvent.click(screen.getByText("Sign In"));
+    await userEvent.click(screen.getByText("Sign In →"));
     expect(screen.getByText("Password is required")).toBeInTheDocument();
   });
 
   it("successful login calls login with password and navigates", async () => {
     mockLogin.mockResolvedValueOnce(true);
     renderLogin();
-    await userEvent.type(screen.getByPlaceholderText("Password"), "admin");
-    await userEvent.click(screen.getByText("Sign In"));
+    await userEvent.type(screen.getByPlaceholderText("Admin password"), "admin");
+    await userEvent.click(screen.getByText("Sign In →"));
     await waitFor(() => {
       expect(mockLogin).toHaveBeenCalledWith("admin");
     });
@@ -55,8 +55,8 @@ describe("LoginPage", () => {
   it("failed login shows error message", async () => {
     mockLogin.mockResolvedValueOnce(false);
     renderLogin();
-    await userEvent.type(screen.getByPlaceholderText("Password"), "wrong");
-    await userEvent.click(screen.getByText("Sign In"));
+    await userEvent.type(screen.getByPlaceholderText("Admin password"), "wrong");
+    await userEvent.click(screen.getByText("Sign In →"));
     await waitFor(() => {
       expect(screen.getByText("Invalid password. Please try again.")).toBeInTheDocument();
     });

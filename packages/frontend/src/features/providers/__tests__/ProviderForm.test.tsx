@@ -25,7 +25,7 @@ describe("ProviderForm", () => {
   it("shows validation errors on empty submit", async () => {
     renderForm();
 
-    const submitButton = screen.getByText("Create");
+    const submitButton = screen.getByText("Create Provider");
     await userEvent.click(submitButton);
 
     await waitFor(() => {
