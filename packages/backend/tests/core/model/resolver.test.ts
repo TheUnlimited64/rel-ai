@@ -323,7 +323,7 @@ describe("ModelResolver", () => {
     expect(() => resolver.resolve("circ-3hop-a")).toThrow(CircularDependencyError);
   });
 
-  test("all providers down with no fallback → throws AllProvidersFailedError", () => {
+  test("direct real model with unhealthy provider → throws AllProvidersFailedError", () => {
     const onlyModel: Model = {
       id: "only-real",
       displayName: "Only Model",
@@ -335,23 +335,35 @@ describe("ModelResolver", () => {
     };
     const resolver = buildResolver([onlyModel], [providerA]);
     resolver.markUnhealthy("p-a");
-    // Real model with unhealthy provider → no fallback chain → lookup fails
-    // Since it's a real model (not virtual/fallback), the resolver finds the model,
-    // gets the provider, but provider is unhealthy — the resolver still returns successfully
-    // because resolve() for real models does NOT check health (health only checked in fallback chains).
-    // To test all providers down, we need a fallback model where all chain providers are unhealthy.
-    const fbModel: Model = {
-      id: "fb-only",
-      displayName: "FB Only",
+    expect(() => resolver.resolve("only-real")).toThrow(AllProvidersFailedError);
+  });
+
+  test("fallback chain with tuned model whose base provider is unhealthy → falls through to next entry", () => {
+    const tunedOnA: Model = {
+      id: "tuned-on-a",
+      displayName: "Tuned on A",
       type: "virtual",
-      variant: "fallback",
-      fallbackChain: ["only-real"],
+      variant: "tuned",
+      baseModelId: "real-1",
+      overrides: { temperature: 0.5 },
       createdAt: new Date(),
       updatedAt: new Date(),
     };
-    const fbResolver = buildResolver([onlyModel, fbModel], [providerA]);
-    fbResolver.markUnhealthy("p-a");
-    expect(() => fbResolver.resolve("fb-only")).toThrow(AllProvidersFailedError);
+    const chainModel: Model = {
+      id: "chain-model",
+      displayName: "Chain",
+      type: "virtual",
+      variant: "fallback",
+      fallbackChain: ["tuned-on-a", "real-2"],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    const resolver = buildResolver([realModel1, realModel2, tunedOnA, chainModel], [providerA, providerB]);
+    resolver.markUnhealthy("p-a");
+    // tuned-on-a's base (real-1 → p-a) is unhealthy → should skip and fall through to real-2
+    const result = resolver.resolve("chain-model");
+    expect(result.providerId).toBe("p-b");
+    expect(result.providerModel).toBe("claude-3-opus");
   });
 
   test("model not found with no tunings or fallbacks → throws ModelNotFoundError", () => {

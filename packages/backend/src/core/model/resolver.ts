@@ -44,6 +44,9 @@ export class ModelResolver {
       if (!provider) {
         throw new ProviderNotFoundError(model.providerId);
       }
+      if (!this.isHealthy(provider.id)) {
+        throw new AllProvidersFailedError(modelId);
+      }
       return {
         providerId: provider.id,
         providerModel: model.providerModel,

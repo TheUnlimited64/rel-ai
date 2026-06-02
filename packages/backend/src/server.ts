@@ -219,7 +219,7 @@ export async function startServer(opts?: StartServerOptions): Promise<StartedSer
   };
 
   const hostname = process.env.HOST || "127.0.0.1";
-  const server = Bun.serve({ fetch: wrappedFetch, port, hostname });
+  const server = Bun.serve({ fetch: wrappedFetch, port, hostname, idleTimeout: 255 });
 
   let shutdownStarted = false;
   async function gracefulShutdown(signal: string) {
