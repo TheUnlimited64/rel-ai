@@ -212,6 +212,7 @@ describe("CommandCodeAdapter", () => {
         finish_reason: "stop",
         done: true,
         usage: { promptTokens: 100, completionTokens: 50 },
+        usageMode: "total",
       });
     });
 
@@ -635,16 +636,14 @@ describe("CommandCodeAdapter", () => {
       expect(fresh.parseSSEChunk(delta)).toBeNull();
     });
 
-    test("tool-call event after tool-input-start reuses same index", () => {
+    test("tool-call event after tool-input-start is skipped (no duplicate emission)", () => {
       const fresh = new CommandCodeAdapter();
       const start = JSON.stringify({ type: "tool-input-start", id: "call_x", toolName: "search" }) + "\n";
       fresh.parseSSEChunk(start);
+      // tool-call arrives with complete args, but streaming deltas were already emitted —
+      // re-emitting would cause clients to concatenate and duplicate arguments.
       const tc = JSON.stringify({ type: "tool-call", toolCallId: "call_x", toolName: "search", input: { q: "hello" } }) + "\n";
-      const result = fresh.parseSSEChunk(tc);
-      expect(result).toEqual({
-        tool_calls: [{ index: 0, id: "call_x", type: "function", function: { name: "search", arguments: "{\"q\":\"hello\"}" } }],
-        done: false,
-      });
+      expect(fresh.parseSSEChunk(tc)).toBeNull();
     });
   });
 

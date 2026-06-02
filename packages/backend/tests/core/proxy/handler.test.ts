@@ -1,7 +1,7 @@
 import { describe, expect, test, mock, beforeEach } from "bun:test";
 import type { ProxyRequest, ProxyResult } from "../../../src/core/proxy/types.js";
 import type { ProviderAdapter } from "../../../src/core/provider/adapter.js";
-import type { ParsedChunk, ProviderError } from "../../../src/core/provider/types.js";
+import type { ParsedChunk, ProviderError, ToolCallDelta } from "../../../src/core/provider/types.js";
 import { ProxyHandler, mergeUsage } from "../../../src/core/proxy/handler.js";
 import { ModelResolver } from "../../../src/core/model/resolver.js";
 import { AdapterRegistry } from "../../../src/core/provider/registry.js";
@@ -58,6 +58,28 @@ const fallbackModel: Model = {
   type: "virtual",
   variant: "fallback",
   fallbackChain: ["gpt-4", "claude-3"],
+  createdAt: new Date(),
+  updatedAt: new Date(),
+};
+
+// Scripted adapter fixtures — used by streaming edge-case tests
+const providerScripted: Provider = {
+  id: "p-scripted",
+  name: "Scripted",
+  adapterType: "scripted",
+  baseUrl: "https://scripted.test",
+  apiKey: "scripted-key",
+  enabled: true,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+};
+
+const realModelScripted: Model = {
+  id: "scripted-model",
+  displayName: "Scripted Model",
+  providerId: "p-scripted",
+  providerModel: "scripted",
+  type: "real",
   createdAt: new Date(),
   updatedAt: new Date(),
 };
@@ -1323,6 +1345,119 @@ describe("ProxyHandler", () => {
       expect(capturedHeaders["Content-Type"]).toBe("application/json");
     });
   });
+
+  describe("streaming finish_reason suppression", () => {
+    test("intermediate finish_reason with done=false is NOT emitted as SSE chunk — only appears in final done chunk", async () => {
+      const chunks: (ParsedChunk | null)[] = [
+        { content: "Hello", done: false },
+        { finish_reason: "tool_calls", done: false }, // CC finish-step style — must be suppressed
+        { content: " world", done: false },
+        { done: true, finish_reason: "stop" },
+      ];
+      const adapter = createScriptedAdapter(chunks);
+      const registry = new AdapterRegistry();
+      registry.register(adapter);
+      const handler = buildHandlerWithRegistry(registry, [realModelScripted], [providerScripted], createMockFetch([scriptedStreamResponse(4)]));
+
+      const result = await handler.handle({ model: "scripted-model", messages: [{ role: "user", content: "Hi" }], stream: true });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      const events = parseSSEEvents((await collectStreamChunks(result.body as ReadableStream)).join(""));
+      const dataEvents = events.filter((e): e is { isDone: false; chunk: Record<string, unknown> } => !e.isDone);
+
+      const withNonNullFinishReason = dataEvents.filter(
+        (e) => (e.chunk.choices as Array<{ finish_reason: string | null }>)[0]?.finish_reason !== null,
+      );
+      // Only the final done chunk should carry a non-null finish_reason
+      expect(withNonNullFinishReason).toHaveLength(1);
+      expect((withNonNullFinishReason[0].chunk.choices as Array<{ finish_reason: string }>)[0].finish_reason).toBe("stop");
+    });
+
+    test("stream closes without done=true — lastFinishReason from intermediate event used in final done chunk", async () => {
+      const chunks: (ParsedChunk | null)[] = [
+        { content: "Partial", done: false },
+        { finish_reason: "stop", done: false }, // sets lastFinishReason; no done:true ever sent
+      ];
+      const adapter = createScriptedAdapter(chunks);
+      const registry = new AdapterRegistry();
+      registry.register(adapter);
+      const handler = buildHandlerWithRegistry(registry, [realModelScripted], [providerScripted], createMockFetch([scriptedStreamResponse(2)]));
+
+      const result = await handler.handle({ model: "scripted-model", messages: [{ role: "user", content: "Hi" }], stream: true });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      const text = (await collectStreamChunks(result.body as ReadableStream)).join("");
+      expect(text).toContain("[DONE]");
+
+      const events = parseSSEEvents(text);
+      const dataEvents = events.filter((e): e is { isDone: false; chunk: Record<string, unknown> } => !e.isDone);
+      const lastEvent = dataEvents[dataEvents.length - 1];
+      // Final done chunk must carry finish_reason "stop" from lastFinishReason fallback
+      expect((lastEvent.chunk.choices as Array<{ finish_reason: string }>)[0].finish_reason).toBe("stop");
+    });
+
+    test("tool_calls + finish_reason in same parsed chunk: tool_calls emitted without finish_reason, done chunk carries finish_reason", async () => {
+      const chunks: (ParsedChunk | null)[] = [
+        {
+          tool_calls: [{ index: 0, id: "tc1", type: "function", function: { name: "search", arguments: "{}" } } satisfies ToolCallDelta],
+          finish_reason: "tool_calls",
+          done: false,
+        },
+        { done: true, finish_reason: "stop" },
+      ];
+      const adapter = createScriptedAdapter(chunks);
+      const registry = new AdapterRegistry();
+      registry.register(adapter);
+      const handler = buildHandlerWithRegistry(registry, [realModelScripted], [providerScripted], createMockFetch([scriptedStreamResponse(2)]));
+
+      const result = await handler.handle({ model: "scripted-model", messages: [{ role: "user", content: "Hi" }], stream: true });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      const events = parseSSEEvents((await collectStreamChunks(result.body as ReadableStream)).join(""));
+      const dataEvents = events.filter((e): e is { isDone: false; chunk: Record<string, unknown> } => !e.isDone);
+
+      // First chunk: has tool_calls, finish_reason must be null (not emitted prematurely)
+      const tcChunk = dataEvents.find((e) => {
+        const delta = (e.chunk.choices as Array<{ delta: Record<string, unknown> }>)[0]?.delta;
+        return Array.isArray(delta?.tool_calls);
+      });
+      expect(tcChunk).toBeDefined();
+      expect((tcChunk!.chunk.choices as Array<{ finish_reason: string | null }>)[0].finish_reason).toBeNull();
+
+      // Final chunk: finish_reason is "stop" (not "tool_calls")
+      const lastEvent = dataEvents[dataEvents.length - 1];
+      expect((lastEvent.chunk.choices as Array<{ finish_reason: string }>)[0].finish_reason).toBe("stop");
+    });
+  });
+
+  describe("rate-limit handling — direct real model", () => {
+    test("rate-limit on direct real model with no fallback: single fetch attempt, returns all_providers_failed", async () => {
+      let fetchCallCount = 0;
+      const fetchFn = (async () => {
+        fetchCallCount++;
+        return rateLimitResponse();
+      }) as unknown as typeof fetch;
+
+      const handler = buildHandler([realModelOpenAI], [providerOpenAI], fetchFn);
+
+      const result = await handler.handle({
+        model: "gpt-4",
+        messages: [{ role: "user", content: "Hi" }],
+        stream: false,
+      });
+
+      // After one 429, provider is unhealthy and resolver throws AllProvidersFailedError.
+      // Handler must not spin through MAX_FALLBACK_ATTEMPTS hitting the same provider.
+      expect(fetchCallCount).toBe(1);
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.status).toBe(503);
+      expect(result.error.code).toBe("all_providers_failed");
+    });
+  });
 });
 
 // --- Helpers ---
@@ -1348,6 +1483,71 @@ function rateLimitResponse(): Response {
     }),
     { status: 429, headers: { "Content-Type": "application/json" } },
   );
+}
+
+// --- Scripted adapter helpers ---
+
+function createScriptedAdapter(chunks: (ParsedChunk | null)[]): ProviderAdapter {
+  let callIndex = 0;
+  return {
+    type: "scripted",
+    streamDelimiter: "\n",
+    createRequest(params) {
+      return {
+        url: "https://scripted.test/stream",
+        headers: { Authorization: "Bearer test", "Content-Type": "application/json" },
+        body: params,
+      };
+    },
+    parseSSEChunk(_chunk: string): ParsedChunk | null {
+      const idx = callIndex++;
+      if (idx >= chunks.length) return null;
+      return chunks[idx];
+    },
+    async parseError(response: Response): Promise<ProviderError> {
+      return { code: "err", message: "err", status: response.status, retryable: false };
+    },
+    isRateLimitError(error: ProviderError) { return error.status === 429; },
+  };
+}
+
+function scriptedStreamResponse(lineCount: number): Response {
+  const body = Array.from({ length: lineCount }, (_, i) => `event-${i}`).join("\n") + "\n";
+  return new Response(body, { headers: { "Content-Type": "text/event-stream" } });
+}
+
+function buildHandlerWithRegistry(
+  registry: AdapterRegistry,
+  models: Model[],
+  providers: Provider[],
+  fetchFn: typeof fetch,
+  onLog?: (log: unknown) => void,
+): ProxyHandler {
+  const resolver = buildResolver(models, providers);
+  return new ProxyHandler({
+    resolver,
+    registry,
+    fetchFn,
+    onLog: onLog ?? (() => {}),
+    getProviderCredentials: (id) => {
+      const p = providers.find((x) => x.id === id);
+      return Promise.resolve(p ? { baseUrl: p.baseUrl, apiKey: p.apiKey } : null);
+    },
+  });
+}
+
+type SSEEvent = { isDone: true } | { isDone: false; chunk: Record<string, unknown> };
+
+function parseSSEEvents(text: string): SSEEvent[] {
+  const events: SSEEvent[] = [];
+  for (const line of text.split("\n")) {
+    const t = line.trim();
+    if (!t.startsWith("data:")) continue;
+    const data = t.slice(5).trim();
+    if (data === "[DONE]") { events.push({ isDone: true }); continue; }
+    try { events.push({ isDone: false, chunk: JSON.parse(data) as Record<string, unknown> }); } catch {}
+  }
+  return events;
 }
 
 // --- mergeUsage unit tests ---

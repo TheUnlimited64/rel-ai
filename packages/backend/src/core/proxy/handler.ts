@@ -63,6 +63,12 @@ export class ProxyHandler {
     const endpointId = request.endpointId;
 
     const abortController = new AbortController();
+    const msgSummary = request.messages?.map((m: {role?: string; content?: string; tool_calls?: unknown[]}) => {
+      if (m.tool_calls) return `${m.role}:<tool_calls:${m.tool_calls.length}>`;
+      if (m.role === "tool") return `tool:<result>`;
+      return `${m.role}:${(m.content ?? "").slice(0, 40)}`;
+    }).join(" → ");
+    console.log(`[PROXY-REQ] ${id} model=${request.model} stream=${request.stream} tools=${request.tools?.length ?? 0} msgs=[${msgSummary}]`);
     const onExternalAbort = () => {
       console.error(`[ABORT] Request ${id} externally aborted at ${performance.now() - start}ms`);
       abortController.abort();
@@ -313,8 +319,6 @@ export class ProxyHandler {
     let totalUsage: { promptTokens: number; completionTokens: number } | undefined;
     let lastFinishReason: string | undefined;
     let hadError = false;
-    const accumulatedChunks: any[] = [];
-
     let streamClosed = false;
     let keepaliveTimer: ReturnType<typeof setInterval> | undefined;
 
@@ -330,13 +334,12 @@ export class ProxyHandler {
             controller.enqueue(textEncoder.encode(": keepalive\n\n"));
             keepaliveCount++;
           } catch {
-            clearInterval(keepaliveTimer!);
+            // Transient enqueue failure — don't kill keepalive, retry next tick
           }
         }, KEEPALIVE_INTERVAL_MS);
 
-        // Push-based pump: buffer all upstream chunks, then flush at once.
-        // This avoids the real-time streaming timeout issue where the client
-        // connection hangs open for 30-60s during CC's agentic loop.
+        // Push-based pump: stream downstream in real-time with unconditional
+        // keepalive to prevent client timeout during CC's agentic loop.
         const pump = async () => {
           try {
             let readCount = 0;
@@ -370,21 +373,46 @@ export class ProxyHandler {
                 // Emit content/thinking/tool_calls BEFORE checking done.
                 // CC can send tool_call + finish in the same chunk — if we
                 // skip this, the client gets finish_reason without tool data.
+                // Separate tool_calls from finish_reason: tool_call deltas
+                // must have finish_reason=null so opencode processes tool calls
+                // before seeing the final finish_reason-only chunk.
+                // NOTE: intermediate finish_reason (e.g. from CC's finish-step)
+                // is intentionally NOT emitted here — it would cause clients
+                // to close the stream before CC's agentic loop completes.
+                // finish_reason is only sent in the final done chunk below.
                 if (parsed.content || parsed.thinking || parsed.tool_calls) {
                   if (parsed.tool_calls) {
                     const tcNames = parsed.tool_calls.map((tc: ToolCallDelta) => `${tc.function?.name}(${tc.id})`).join(', ');
-                    console.log(`[STREAM-TC] ${id} buffering tool_calls: ${tcNames} at ${performance.now() - start}ms`);
+                    console.log(`[STREAM-TC] ${id} tool_calls: ${tcNames} at ${performance.now() - start}ms`);
                   }
-                  accumulatedChunks.push(parsed);
+                  // Diagnostic: log chunk type to trace event flow
+                  const chunkType = parsed.tool_calls ? 'TC' : parsed.finish_reason ? `FR(${parsed.finish_reason})` : parsed.content ? 'CONTENT' : parsed.thinking ? 'THINK' : 'OTHER';
+                  console.log(`[CHUNK] ${id} type=${chunkType} at ${performance.now() - start}ms`);
+                  // When tool_calls present, emit without finish_reason so
+                  // opencode processes tool calls before seeing finish_reason.
+                  // The done chunk below provides finish_reason separately.
+                  const emitParsed = parsed.tool_calls
+                    ? { ...parsed, finish_reason: undefined, done: false }
+                    : parsed;
+                  const chunk = formatStreamChunk(id, providerModel, emitParsed);
+                  controller.enqueue(textEncoder.encode(chunk));
                 }
 
                 if (parsed.done) {
                   if (parsed.finish_reason) lastFinishReason = parsed.finish_reason;
                   if (lastFinishReason && !streamClosed) {
                     streamClosed = true;
+                    const doneChunk = formatStreamChunk(id, providerModel, {
+                      done: true,
+                      finish_reason: lastFinishReason,
+                      ...(totalUsage ? { usage: totalUsage } : {}),
+                    });
+                    controller.enqueue(textEncoder.encode(doneChunk));
+                    controller.enqueue(textEncoder.encode(formatStreamDone()));
                     clearInterval(keepaliveTimer!);
-                    console.log(`[STREAM-EARLY-CLOSE] ${id} ${lastFinishReason} at ${performance.now() - start}ms, usage=${JSON.stringify(totalUsage)}`);
+                    console.log(`[STREAM-DONE] ${id} ${lastFinishReason} at ${performance.now() - start}ms, usage=${JSON.stringify(totalUsage)}`);
                     reader.cancel().catch(() => {});
+                    try { controller.close(); } catch {}
                     break;
                   }
                   continue;
@@ -401,34 +429,36 @@ export class ProxyHandler {
                 if (parsed.usage) {
                   totalUsage = mergeUsage(totalUsage, parsed.usage, parsed.usageMode);
                 }
-                if (parsed.content || parsed.thinking || parsed.tool_calls || parsed.finish_reason) {
-                  accumulatedChunks.push({ ...parsed, done: false });
+                if (parsed.content || parsed.thinking || parsed.tool_calls) {
+                  const emitParsed = parsed.tool_calls
+                    ? { ...parsed, finish_reason: undefined, done: false }
+                    : { ...parsed, done: false };
+                  const chunk = formatStreamChunk(id, providerModel, emitParsed);
+                  controller.enqueue(textEncoder.encode(chunk));
                 }
-                if (parsed.done && parsed.finish_reason) {
-                  lastFinishReason = parsed.finish_reason;
+                if (parsed.finish_reason) lastFinishReason = parsed.finish_reason;
+                if (parsed.done && lastFinishReason) {
+                  lastFinishReason = parsed.finish_reason ?? lastFinishReason;
                 }
               }
             }
-            streamClosed = true;
-            clearInterval(keepaliveTimer!);
 
-            // Flush all accumulated chunks to client at once
-            console.log(`[STREAM-FLUSH] ${id} flushing ${accumulatedChunks.length} buffered chunks at ${performance.now() - start}ms`);
-            try {
-              for (const chunk of accumulatedChunks) {
-                const formatted = formatStreamChunk(id, providerModel, chunk);
-                controller.enqueue(textEncoder.encode(formatted));
+            // Send done if not already sent via early-close
+            if (!streamClosed) {
+              streamClosed = true;
+              clearInterval(keepaliveTimer!);
+              try {
+                const finalChunk = formatStreamChunk(id, providerModel, {
+                  done: true,
+                  finish_reason: lastFinishReason,
+                  ...(totalUsage ? { usage: totalUsage } : {}),
+                });
+                controller.enqueue(textEncoder.encode(finalChunk));
+                controller.enqueue(textEncoder.encode(formatStreamDone()));
+                controller.close();
+              } catch {
+                // Controller already closed — ignore
               }
-              const finalChunk = formatStreamChunk(id, providerModel, {
-                done: true,
-                finish_reason: lastFinishReason,
-                ...(totalUsage ? { usage: totalUsage } : {}),
-              });
-              controller.enqueue(textEncoder.encode(finalChunk));
-              controller.enqueue(textEncoder.encode(formatStreamDone()));
-              controller.close();
-            } catch {
-              // Controller already closed — ignore
             }
 
             this.emitLog({
