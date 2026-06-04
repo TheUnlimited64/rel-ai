@@ -142,9 +142,9 @@ export function listEndpoints(db: DbClient): EndpointListResponse[] {
 export function getEndpoint(
   db: DbClient,
   id: string,
-): EndpointGetResponse {
+): Promise<EndpointGetResponse> {
   const row = db.select().from(endpoints).where(eq(endpoints.id, id)).get();
-  if (!row) throw new Error("NOT_FOUND");
+  if (!row) return Promise.reject(new Error("NOT_FOUND"));
 
   const junctionRows = db
     .select({ modelId: endpointModels.modelId })
@@ -174,7 +174,7 @@ export function getEndpoint(
     }
   }
 
-  return {
+  return Promise.resolve({
     id: row.id,
     name: row.name,
     path: row.path,
@@ -184,7 +184,7 @@ export function getEndpoint(
     models: modelList,
     groups: groupList,
     proxyBase: getProxyBase(),
-  };
+  });
 }
 
 export function updateEndpoint(
@@ -199,7 +199,7 @@ export function updateEndpoint(
   },
 ): Promise<EndpointGetResponse> {
   const existing = db.select().from(endpoints).where(eq(endpoints.id, input.id)).get();
-  if (!existing) throw new Error("NOT_FOUND");
+  if (!existing) return Promise.reject(new Error("NOT_FOUND"));
 
   const updates: Partial<typeof endpoints.$inferInsert> = {};
   if (input.name !== undefined) updates.name = input.name;
@@ -236,26 +236,26 @@ export function updateEndpoint(
   });
   } catch (err: unknown) {
     if (err instanceof Error && err.message.includes("UNIQUE constraint")) {
-      throw new Error("DUPLICATE_PATH");
+      return Promise.reject(new Error("DUPLICATE_PATH"));
     }
-    throw err;
+    return Promise.reject(err instanceof Error ? err : new Error(String(err)));
   }
 
-  return Promise.resolve(getEndpoint(db, input.id));
+  return getEndpoint(db, input.id);
 }
 
 export function deleteEndpoint(
   db: DbClient,
   id: string,
-): { success: boolean } {
+): Promise<{ success: boolean }> {
   const existing = db.select().from(endpoints).where(eq(endpoints.id, id)).get();
-  if (!existing) throw new Error("NOT_FOUND");
+  if (!existing) return Promise.reject(new Error("NOT_FOUND"));
 
   // Synchronous DB call blocks the event loop — acceptable for homelab scale where concurrency is low
   // TODO: Migrate to async drizzle queries for production scale
   db.delete(endpoints).where(eq(endpoints.id, id)).run();
 
-  return { success: true };
+  return Promise.resolve({ success: true });
 }
 
 export async function regenerateEndpointToken(
@@ -281,9 +281,9 @@ export async function regenerateEndpointToken(
 export function getEndpointModels(
   db: DbClient,
   id: string,
-): { id: string; displayName: string; type: string; providerId: string | null }[] {
+): Promise<{ id: string; displayName: string; type: string; providerId: string | null }[]> {
   const existing = db.select().from(endpoints).where(eq(endpoints.id, id)).get();
-  if (!existing) throw new Error("NOT_FOUND");
+  if (!existing) return Promise.reject(new Error("NOT_FOUND"));
 
   const junctionRows = db
     .select({ modelId: endpointModels.modelId })
@@ -304,5 +304,5 @@ export function getEndpointModels(
     }
   }
 
-  return result;
+  return Promise.resolve(result);
 }
