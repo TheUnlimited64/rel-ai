@@ -11,7 +11,7 @@ export type ProxyRequest = {
 };
 
 export type ProxyResult =
-  | { ok: true; status: number; body: ReadableStream<Uint8Array> | unknown; headers: Record<string, string> }
+  | { ok: true; status: number; body: unknown; headers: Record<string, string> }
   | { ok: false; status: number; error: ProxyError };
 
 export type ProxyError = {

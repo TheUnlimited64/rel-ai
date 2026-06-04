@@ -25,14 +25,14 @@ export const models = sqliteTable(
       .notNull()
       .default(sql`(datetime('now'))`),
   },
-  (table) => ({
-    typeCheck: check(
+  (table) => [
+    check(
       "models_type_check",
       sql`${table.type} IN ('real', 'virtual')`,
     ),
-    variantCheck: check(
+    check(
       "models_variant_check",
       sql`${table.variant} IN ('fallback', 'tuned')`,
     ),
-  }),
+  ],
 );

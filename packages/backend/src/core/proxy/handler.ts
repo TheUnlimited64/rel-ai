@@ -1,6 +1,6 @@
 import type { ProxyRequest, ProxyResult, ProxyError, RequestLogData } from "./types.js";
 import type { ProviderAdapter } from "../provider/adapter.js";
-import type { ProviderError as PProviderError } from "../provider/types.js";
+import type { ProviderError as PProviderError, ToolCallDelta } from "../provider/types.js";
 import { ModelResolver } from "../model/resolver.js";
 import { AdapterRegistry } from "../provider/registry.js";
 import {
@@ -63,14 +63,14 @@ export class ProxyHandler {
     const endpointId = request.endpointId;
 
     const abortController = new AbortController();
-    const msgSummary = request.messages?.map((m: {role?: string; content?: string; tool_calls?: unknown[]}) => {
-      if (m.tool_calls) return `${m.role}:<tool_calls:${m.tool_calls.length}>`;
+    const msgSummary = request.messages.map((m) => {
+      if (m.tool_calls) return `${m.role}:<tool_calls:${String(m.tool_calls.length)}>`;
       if (m.role === "tool") return `tool:<result>`;
-      return `${m.role}:${(m.content ?? "").slice(0, 40)}`;
+      return `${m.role}:${(typeof m.content === "string" ? m.content : "").slice(0, 40)}`;
     }).join(" → ");
-    console.log(`[PROXY-REQ] ${id} model=${request.model} stream=${request.stream} tools=${request.tools?.length ?? 0} msgs=[${msgSummary}]`);
+    console.log(`[PROXY-REQ] ${id} model=${request.model} stream=${String(request.stream)} msgs=[${msgSummary}]`);
     const onExternalAbort = () => {
-      console.error(`[ABORT] Request ${id} externally aborted at ${performance.now() - start}ms`);
+      console.error(`[ABORT] Request ${id} externally aborted at ${String(Math.round(performance.now() - start))}ms`);
       abortController.abort();
     };
     if (request.signal?.aborted) {
@@ -202,7 +202,7 @@ export class ProxyHandler {
         } catch {
           providerError = {
             code: "unknown",
-            message: `Provider returned status ${response.status}`,
+            message: `Provider returned status ${String(response.status)}`,
             status: response.status,
             retryable: response.status >= 500,
           };
@@ -244,7 +244,7 @@ export class ProxyHandler {
 
       // Success — proceed with streaming or non-streaming
       if (request.stream) {
-        return this.handleStream(id, request.model, providerModel, adapterType, providerId, response, adapter, start, request.stream, endpointId, abortController);
+        return this.handleStream(id, request.model, providerModel, adapterType, providerId, response, adapter, start, request.stream, endpointId);
       }
 
       return this.handleNonStream(id, request.model, providerModel, adapterType, providerId, response, adapter, start, request.stream, endpointId);
@@ -284,10 +284,9 @@ export class ProxyHandler {
     start: number,
     isStream: boolean,
     endpointId: string | undefined,
-    abortController?: AbortController,
   ): ProxyResult {
     if ("resetStreamState" in adapter && typeof adapter.resetStreamState === "function") {
-      adapter.resetStreamState();
+      (adapter.resetStreamState as () => void)();
     }
     const body = response.body;
     if (!body) {
@@ -327,12 +326,10 @@ export class ProxyHandler {
         // Unconditional keepalive: send SSE comment every 5s while buffering
         // so the client sees regular data and doesn't timeout.
         const KEEPALIVE_INTERVAL_MS = 5_000;
-        let keepaliveCount = 0;
         keepaliveTimer = setInterval(() => {
-          if (streamClosed) { clearInterval(keepaliveTimer!); return; }
+          if (streamClosed) { clearInterval(keepaliveTimer); return; }
           try {
             controller.enqueue(textEncoder.encode(": keepalive\n\n"));
-            keepaliveCount++;
           } catch {
             // Transient enqueue failure — don't kill keepalive, retry next tick
           }
@@ -351,7 +348,7 @@ export class ProxyHandler {
               lastReadTime = now;
               readCount++;
               if (readGap > 3000 || readCount <= 3) {
-                console.log(`[STREAM-READ] ${id} #${readCount} gap=${Math.round(readGap)}ms done=${done} len=${value?.length ?? 0}`);
+                console.log(`[STREAM-READ] ${id} #${String(readCount)} gap=${String(Math.round(readGap))}ms done=${String(done)} len=${String(value?.length ?? 0)}`);
               }
               if (done) break;
 
@@ -382,12 +379,12 @@ export class ProxyHandler {
                 // finish_reason is only sent in the final done chunk below.
                 if (parsed.content || parsed.thinking || parsed.tool_calls) {
                   if (parsed.tool_calls) {
-                    const tcNames = parsed.tool_calls.map((tc: ToolCallDelta) => `${tc.function?.name}(${tc.id})`).join(', ');
-                    console.log(`[STREAM-TC] ${id} tool_calls: ${tcNames} at ${performance.now() - start}ms`);
+                    const tcNames = parsed.tool_calls.map((tc: ToolCallDelta) => `${tc.function?.name ?? ""}(${tc.id ?? ""})`).join(', ');
+                    console.log(`[STREAM-TC] ${id} tool_calls: ${tcNames} at ${String(Math.round(performance.now() - start))}ms`);
                   }
                   // Diagnostic: log chunk type to trace event flow
                   const chunkType = parsed.tool_calls ? 'TC' : parsed.finish_reason ? `FR(${parsed.finish_reason})` : parsed.content ? 'CONTENT' : parsed.thinking ? 'THINK' : 'OTHER';
-                  console.log(`[CHUNK] ${id} type=${chunkType} at ${performance.now() - start}ms`);
+                  console.log(`[CHUNK] ${id} type=${chunkType} at ${String(Math.round(performance.now() - start))}ms`);
                   // When tool_calls present, emit without finish_reason so
                   // opencode processes tool calls before seeing finish_reason.
                   // The done chunk below provides finish_reason separately.
@@ -409,8 +406,8 @@ export class ProxyHandler {
                     });
                     controller.enqueue(textEncoder.encode(doneChunk));
                     controller.enqueue(textEncoder.encode(formatStreamDone()));
-                    clearInterval(keepaliveTimer!);
-                    console.log(`[STREAM-DONE] ${id} ${lastFinishReason} at ${performance.now() - start}ms, usage=${JSON.stringify(totalUsage)}`);
+                    clearInterval(keepaliveTimer);
+                    console.log(`[STREAM-DONE] ${id} ${lastFinishReason} at ${String(Math.round(performance.now() - start))}ms, usage=${JSON.stringify(totalUsage)}`);
                     reader.cancel().catch(() => {});
                     try { controller.close(); } catch {}
                     break;
@@ -446,7 +443,7 @@ export class ProxyHandler {
             // Send done if not already sent via early-close
             if (!streamClosed) {
               streamClosed = true;
-              clearInterval(keepaliveTimer!);
+              clearInterval(keepaliveTimer);
               try {
                 const finalChunk = formatStreamChunk(id, providerModel, {
                   done: true,
@@ -476,11 +473,11 @@ export class ProxyHandler {
             if (!hadError) {
               hadError = true;
               streamClosed = true;
-              clearInterval(keepaliveTimer!);
+              clearInterval(keepaliveTimer);
               void reader.cancel();
               const correlationId = generateCorrelationId();
               const rawMsg = err instanceof Error ? err.message : "Stream error";
-              console.error(`[STREAM-ERROR] ${id} rawMsg=${rawMsg} at ${performance.now() - start}ms`);
+              console.error(`[STREAM-ERROR] ${id} rawMsg=${rawMsg} at ${String(Math.round(performance.now() - start))}ms`);
               this.emitLog({
                 model,
                 providerId,
@@ -508,8 +505,8 @@ export class ProxyHandler {
       cancel: async () => {
         if (streamClosed) return;
         streamClosed = true;
-        clearInterval(keepaliveTimer!);
-        console.log(`[STREAM-CANCEL] ${id} downstream cancelled at ${performance.now() - start}ms`);
+        clearInterval(keepaliveTimer);
+        console.log(`[STREAM-CANCEL] ${id} downstream cancelled at ${String(Math.round(performance.now() - start))}ms`);
         try {
           await reader.cancel();
         } catch {
@@ -583,11 +580,11 @@ export class ProxyHandler {
       // Try OpenAI format
       const choices = json.choices as Array<Record<string, unknown>> | undefined;
       if (choices && choices.length > 0) {
-        const choice = choices[0]!;
+        const choice = choices[0] ?? {};
         const msg = choice.message as Record<string, unknown> | undefined;
-        content = (msg?.content as string | null) ?? null;
-        if (Array.isArray(msg?.tool_calls)) {
-          toolCalls = msg!.tool_calls as import("../provider/types.js").ToolCall[];
+        content = (msg?.content as string | null | undefined) ?? null;
+        if (msg && Array.isArray(msg.tool_calls)) {
+          toolCalls = msg.tool_calls as import("../provider/types.js").ToolCall[];
         }
         if (typeof choice.finish_reason === "string") {
           finishReason = choice.finish_reason;
@@ -621,8 +618,8 @@ export class ProxyHandler {
       const jsonUsage = json.usage as Record<string, unknown> | undefined;
       if (jsonUsage) {
         usage = {
-          promptTokens: (jsonUsage.prompt_tokens as number) ?? (jsonUsage.input_tokens as number) ?? 0,
-          completionTokens: (jsonUsage.completion_tokens as number) ?? (jsonUsage.output_tokens as number) ?? 0,
+          promptTokens: (jsonUsage.prompt_tokens as number | undefined) ?? (jsonUsage.input_tokens as number | undefined) ?? 0,
+          completionTokens: (jsonUsage.completion_tokens as number | undefined) ?? (jsonUsage.output_tokens as number | undefined) ?? 0,
         };
       } else {
         usage = { promptTokens: 0, completionTokens: 0 };
@@ -652,7 +649,7 @@ export class ProxyHandler {
   }
 
   private async fetchWithTimeout(url: string, init: RequestInit, abortController: AbortController, externalSignal?: AbortSignal): Promise<Response> {
-    const timer = setTimeout(() => abortController.abort(), this.timeout);
+    const timer = setTimeout(() => { abortController.abort(); }, this.timeout);
 
     try {
       const response = await this.fetchFn(url, {
@@ -681,7 +678,7 @@ export class ProxyHandler {
 
 class TimeoutError extends Error {
   constructor(timeoutMs: number) {
-    super(`Request timed out after ${timeoutMs}ms`);
+    super(`Request timed out after ${String(timeoutMs)}ms`);
     this.name = "TimeoutError";
   }
 }

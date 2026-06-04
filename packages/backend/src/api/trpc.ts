@@ -19,7 +19,7 @@ const loggingMiddleware = t.middleware(async ({ path, next }) => {
   const start = Date.now();
   const result = await next();
   const duration = Date.now() - start;
-  console.log(`[tRPC] ${path} - ${duration}ms`);
+  console.log(`[tRPC] ${path} - ${String(duration)}ms`);
   return result;
 });
 

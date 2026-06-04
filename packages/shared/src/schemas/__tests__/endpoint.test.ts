@@ -26,7 +26,7 @@ describe("EndpointSchema", () => {
   });
 
   it("applies default for enabled", () => {
-    const { enabled, ...without } = validEndpoint;
+    const { enabled: _enabled, ...without } = validEndpoint;
     const result = EndpointSchema.parse(without);
     expect(result.enabled).toBe(true);
   });
@@ -63,13 +63,13 @@ describe("EndpointSchema", () => {
 
 describe("CreateEndpointSchema", () => {
   it("parses valid create input", () => {
-    const { id, createdAt, updatedAt, ...createInput } = validEndpoint;
+    const { id: _id, createdAt: _createdAt, updatedAt: _updatedAt, ...createInput } = validEndpoint;
     const result = CreateEndpointSchema.parse(createInput);
     expect(result.name).toBe("My Endpoint");
   });
 
   it("rejects id field", () => {
-    const { createdAt, updatedAt, ...withId } = validEndpoint;
+    const { createdAt: _createdAt2, updatedAt: _updatedAt2, ...withId } = validEndpoint;
     expect(() => CreateEndpointSchema.parse(withId)).toThrow();
   });
 });

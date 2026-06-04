@@ -2,11 +2,11 @@ import { z } from "zod";
 import { ModelStatusSchema } from "./enums.js";
 
 export const RequestLogSchema = z.object({
-  id: z.string().uuid(),
-  endpointId: z.string().uuid(),
+  id: z.uuid(),
+  endpointId: z.uuid(),
   requestedModel: z.string(),
   resolvedModel: z.string().optional(),
-  providerId: z.string().uuid().optional(),
+  providerId: z.uuid().optional(),
   promptTokens: z.number().int().nonnegative().optional(),
   completionTokens: z.number().int().nonnegative().optional(),
   latencyMs: z.number().int().nonnegative().optional(),
@@ -18,10 +18,10 @@ export const RequestLogSchema = z.object({
 export type RequestLog = z.infer<typeof RequestLogSchema>;
 
 export const CreateRequestLogSchema = z.object({
-  endpointId: z.string().uuid(),
+  endpointId: z.uuid(),
   requestedModel: z.string(),
   resolvedModel: z.string().optional(),
-  providerId: z.string().uuid().optional(),
+  providerId: z.uuid().optional(),
   promptTokens: z.number().int().nonnegative().optional(),
   completionTokens: z.number().int().nonnegative().optional(),
   latencyMs: z.number().int().nonnegative().optional(),

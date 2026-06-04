@@ -1,5 +1,4 @@
 import type { FetchCreateContextFnOptions } from "@trpc/server/adapters/fetch";
-import type { Context } from "hono";
 import type { DbClient } from "../db/connection.js";
 import type { AdapterRegistry } from "../core/provider/registry.js";
 import { verifySessionToken, getSessionCookieName } from "../core/auth/session.js";
@@ -13,7 +12,6 @@ export type tRPCContext = {
 export function createContextFactory(db: DbClient, registry: AdapterRegistry) {
   return async function createContext(
     opts: FetchCreateContextFnOptions,
-    _c: Context,
   ): Promise<tRPCContext> {
     const cookieHeader = opts.req.headers.get("Cookie") ?? "";
     const cookieName = getSessionCookieName();

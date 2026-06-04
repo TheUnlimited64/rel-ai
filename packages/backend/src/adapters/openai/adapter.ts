@@ -16,11 +16,13 @@ export class OpenAIAdapter implements ProviderAdapter {
     stream: boolean;
     overrides?: Record<string, unknown>;
   }): { url: string; headers: Record<string, string>; body: unknown } {
-    const apiKey = (params.overrides?.apiKey as string) ?? this.defaultApiKey ?? "";
-    const baseUrl = (params.overrides?.baseUrl as string) ?? this.defaultBaseUrl ?? "https://api.openai.com";
+    const apiKey = (params.overrides?.apiKey as string | undefined) ?? this.defaultApiKey ?? "";
+    const baseUrl = (params.overrides?.baseUrl as string | undefined) ?? this.defaultBaseUrl ?? "https://api.openai.com";
 
     // Strip internal keys from overrides before passing to body
-    const { apiKey: _a, baseUrl: _b, ...restOverrides } = params.overrides ?? ({} as Record<string, unknown>);
+    const restOverrides = { ...(params.overrides ?? {}) } as Record<string, unknown>;
+    delete restOverrides.apiKey;
+    delete restOverrides.baseUrl;
 
     const body: Record<string, unknown> = {
       model: params.model,

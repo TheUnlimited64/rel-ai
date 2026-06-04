@@ -74,13 +74,13 @@ describe("RequestLogSchema", () => {
 
 describe("CreateRequestLogSchema", () => {
   it("parses valid create input", () => {
-    const { id, createdAt, ...createInput } = validRequestLog;
+    const { id: _id, createdAt: _createdAt, ...createInput } = validRequestLog;
     const result = CreateRequestLogSchema.parse(createInput);
     expect(result.requestedModel).toBe("gpt-4");
   });
 
   it("rejects id field", () => {
-    const { createdAt, ...withId } = validRequestLog;
+    const { createdAt: _createdAt2, ...withId } = validRequestLog;
     expect(() => CreateRequestLogSchema.parse(withId)).toThrow();
   });
 });

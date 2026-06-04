@@ -82,7 +82,7 @@ describe("ModelSchema (discriminated union)", () => {
 
   it("rejects object without type discriminant", () => {
     expect(() => {
-      const { type, ...noType } = validRealModel;
+      const { type: _type, ...noType } = validRealModel;
       ModelSchema.parse(noType);
     }).toThrow();
   });
@@ -96,40 +96,40 @@ describe("ModelSchema (discriminated union)", () => {
 
 describe("CreateRealModelSchema", () => {
   it("parses valid create input", () => {
-    const { id, createdAt, updatedAt, ...createInput } = validRealModel;
+    const { id: _id, createdAt: _createdAt, updatedAt: _updatedAt, ...createInput } = validRealModel;
     const result = CreateRealModelSchema.parse(createInput);
     expect(result.type).toBe("real");
     expect(result.providerModel).toBe("gpt-4o");
   });
 
   it("rejects id field", () => {
-    const { createdAt, updatedAt, ...withId } = validRealModel;
+    const { createdAt: _createdAt2, updatedAt: _updatedAt2, ...withId } = validRealModel;
     expect(() => CreateRealModelSchema.parse(withId)).toThrow();
   });
 });
 
 describe("CreateVirtualModelSchema", () => {
   it("parses valid create input", () => {
-    const { id, createdAt, updatedAt, ...createInput } = validVirtualModel;
+    const { id: _id, createdAt: _createdAt, updatedAt: _updatedAt, ...createInput } = validVirtualModel;
     const result = CreateVirtualModelSchema.parse(createInput);
     expect(result.type).toBe("virtual");
   });
 
   it("rejects id field", () => {
-    const { createdAt, updatedAt, ...withId } = validVirtualModel;
+    const { createdAt: _createdAt2, updatedAt: _updatedAt2, ...withId } = validVirtualModel;
     expect(() => CreateVirtualModelSchema.parse(withId)).toThrow();
   });
 });
 
 describe("CreateModelSchema (discriminated union)", () => {
   it("parses create real model", () => {
-    const { id, createdAt, updatedAt, ...createInput } = validRealModel;
+    const { id: _id, createdAt: _createdAt, updatedAt: _updatedAt, ...createInput } = validRealModel;
     const result = CreateModelSchema.parse(createInput);
     expect(result.type).toBe("real");
   });
 
   it("parses create virtual model", () => {
-    const { id, createdAt, updatedAt, ...createInput } = validVirtualModel;
+    const { id: _id2, createdAt: _createdAt2, updatedAt: _updatedAt2, ...createInput } = validVirtualModel;
     const result = CreateModelSchema.parse(createInput);
     expect(result.type).toBe("virtual");
   });

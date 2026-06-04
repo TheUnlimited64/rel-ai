@@ -50,7 +50,7 @@ const ADAPTER_LABELS: Record<AdapterType, string> = {
 };
 
 export function formatAdapterLabel(type: AdapterType): string {
-  return ADAPTER_LABELS[type] ?? type.charAt(0).toUpperCase() + type.slice(1);
+  return ADAPTER_LABELS[type];
 }
 
 export function maskApiKey(key: string): string {

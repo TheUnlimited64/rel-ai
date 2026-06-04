@@ -12,7 +12,7 @@ export const endpointGroups = sqliteTable(
       .notNull()
       .references(() => modelGroups.id, { onDelete: "cascade" }),
   },
-  (table) => ({
-    pk: primaryKey({ columns: [table.endpointId, table.groupId] }),
-  }),
+  (table) => [
+    primaryKey({ columns: [table.endpointId, table.groupId] }),
+  ],
 );

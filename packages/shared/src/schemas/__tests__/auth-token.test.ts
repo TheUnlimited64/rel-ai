@@ -21,7 +21,7 @@ describe("AuthTokenSchema", () => {
   });
 
   it("accepts without lastUsedAt", () => {
-    const { lastUsedAt, ...without } = validAuthToken;
+    const { lastUsedAt: _lastUsedAt, ...without } = validAuthToken;
     const result = AuthTokenSchema.parse(without);
     expect(result.lastUsedAt).toBeUndefined();
   });
@@ -41,13 +41,13 @@ describe("AuthTokenSchema", () => {
 
 describe("CreateAuthTokenSchema", () => {
   it("parses valid create input", () => {
-    const { id, createdAt, ...createInput } = validAuthToken;
+    const { id: _id, createdAt: _createdAt, ...createInput } = validAuthToken;
     const result = CreateAuthTokenSchema.parse(createInput);
     expect(result.name).toBe("My Token");
   });
 
   it("rejects id field", () => {
-    const { createdAt, ...withId } = validAuthToken;
+    const { createdAt: _createdAt2, ...withId } = validAuthToken;
     expect(() => CreateAuthTokenSchema.parse(withId)).toThrow();
   });
 });

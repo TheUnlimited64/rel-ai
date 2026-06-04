@@ -19,14 +19,14 @@ export function createDb(dbPath?: string) {
 
   const sqlite = new Database(resolvedPath);
   // Enable WAL mode and foreign keys
-  sqlite.exec("PRAGMA journal_mode = WAL");
-  sqlite.exec("PRAGMA foreign_keys = ON");
+  sqlite.run("PRAGMA journal_mode = WAL");
+  sqlite.run("PRAGMA foreign_keys = ON");
 
   return drizzle(sqlite, { schema });
 }
 
 export function createMemoryDb() {
   const sqlite = new Database(":memory:");
-  sqlite.exec("PRAGMA foreign_keys = ON");
+  sqlite.run("PRAGMA foreign_keys = ON");
   return drizzle(sqlite, { schema });
 }

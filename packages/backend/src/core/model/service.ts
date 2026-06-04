@@ -3,7 +3,7 @@ import { models } from "../../db/schema/models.js";
 import { providers } from "../../db/schema/providers.js";
 import type { DbClient } from "../../db/connection.js";
 import { ModelResolver } from "./resolver.js";
-import type { Model, Provider } from "@rel-ai/shared";
+import type { Provider } from "@rel-ai/shared";
 
 export type ModelRow = typeof models.$inferSelect;
 
@@ -49,8 +49,8 @@ function deserializeModel(row: ModelRow): ModelResponse {
       id: row.id,
       displayName: row.displayName,
       type: "real",
-      providerId: row.providerId!,
-      providerModel: row.providerModel!,
+      providerId: row.providerId ?? "",
+      providerModel: row.providerModel ?? "",
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };
@@ -61,7 +61,7 @@ function deserializeModel(row: ModelRow): ModelResponse {
       displayName: row.displayName,
       type: "virtual",
       variant: "fallback",
-      fallbackChain: row.fallbackChain ? JSON.parse(row.fallbackChain) : [],
+      fallbackChain: row.fallbackChain ? (JSON.parse(row.fallbackChain) as string[]) : [],
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };
@@ -72,8 +72,8 @@ function deserializeModel(row: ModelRow): ModelResponse {
     displayName: row.displayName,
     type: "virtual",
     variant: "tuned",
-    baseModelId: row.baseModelId!,
-    overrides: row.overrides ? JSON.parse(row.overrides) : {},
+    baseModelId: row.baseModelId ?? "",
+    overrides: row.overrides ? (JSON.parse(row.overrides) as Record<string, unknown>) : {},
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -87,7 +87,7 @@ function deserializeProvider(row: typeof providers.$inferSelect): Provider {
     baseUrl: row.baseUrl,
     apiKey: row.apiKey,
     enabled: row.enabled,
-    config: row.config ? JSON.parse(row.config) : undefined,
+    config: row.config ? (JSON.parse(row.config) as Record<string, unknown>) : undefined,
     createdAt: new Date(row.createdAt),
     updatedAt: new Date(row.updatedAt),
   };
@@ -101,7 +101,8 @@ function detectCircular(
   const visited = new Set<string>();
   const queue = [...fallbackChain];
   while (queue.length > 0) {
-    const current = queue.shift()!;
+    const current = queue.shift();
+    if (current === undefined) break;
     if (current === modelId) return true;
     if (visited.has(current)) continue;
     visited.add(current);
@@ -142,7 +143,7 @@ export function createRealModel(
   const existing = db.select().from(models).where(eq(models.id, input.id)).get();
   if (existing) throw new Error("DUPLICATE_ID");
 
-  const now = new Date().toISOString().replace("T", " ").split(".")[0]!;
+  const now = new Date().toISOString().replace("T", " ").split(".")[0] ?? "";
   // Synchronous DB call blocks the event loop — acceptable for homelab scale where concurrency is low
   // TODO: Migrate to async drizzle queries for production scale
   db.transaction((tx) => {
@@ -159,7 +160,8 @@ export function createRealModel(
       .run();
   });
 
-  const row = db.select().from(models).where(eq(models.id, input.id)).get()!;
+  const row = db.select().from(models).where(eq(models.id, input.id)).get();
+  if (!row) throw new Error("NOT_FOUND");
   return deserializeModel(row);
 }
 
@@ -191,7 +193,7 @@ export function createVirtualFallbackModel(
   });
   if (isCircular) throw new Error("CIRCULAR_DEPENDENCY");
 
-  const now = new Date().toISOString().replace("T", " ").split(".")[0]!;
+  const now = new Date().toISOString().replace("T", " ").split(".")[0] ?? "";
   // Synchronous DB call blocks the event loop — acceptable for homelab scale where concurrency is low
   // TODO: Migrate to async drizzle queries for production scale
   db.transaction((tx) => {
@@ -208,7 +210,8 @@ export function createVirtualFallbackModel(
       .run();
   });
 
-  const row = db.select().from(models).where(eq(models.id, input.id)).get()!;
+  const row = db.select().from(models).where(eq(models.id, input.id)).get();
+  if (!row) throw new Error("NOT_FOUND");
   return deserializeModel(row);
 }
 
@@ -229,7 +232,7 @@ export function createVirtualTunedModel(
     throw new Error("INVALID_BASE_MODEL");
   }
 
-  const now = new Date().toISOString().replace("T", " ").split(".")[0]!;
+  const now = new Date().toISOString().replace("T", " ").split(".")[0] ?? "";
   // Synchronous DB call blocks the event loop — acceptable for homelab scale where concurrency is low
   // TODO: Migrate to async drizzle queries for production scale
   db.transaction((tx) => {
@@ -247,7 +250,8 @@ export function createVirtualTunedModel(
       .run();
   });
 
-  const row = db.select().from(models).where(eq(models.id, input.id)).get()!;
+  const row = db.select().from(models).where(eq(models.id, input.id)).get();
+  if (!row) throw new Error("NOT_FOUND");
   return deserializeModel(row);
 }
 
@@ -319,7 +323,7 @@ export function updateModel(
     }
   }
 
-  const now = new Date().toISOString().replace("T", " ").split(".")[0]!;
+  const now = new Date().toISOString().replace("T", " ").split(".")[0] ?? "";
   updates.updatedAt = now;
 
   // Synchronous DB call blocks the event loop — acceptable for homelab scale where concurrency is low
@@ -328,7 +332,8 @@ export function updateModel(
     tx.update(models).set(updates).where(eq(models.id, input.id)).run();
   });
 
-  const row = db.select().from(models).where(eq(models.id, input.id)).get()!;
+  const row = db.select().from(models).where(eq(models.id, input.id)).get();
+  if (!row) throw new Error("NOT_FOUND");
   return deserializeModel(row);
 }
 
@@ -360,8 +365,8 @@ export function testResolution(
   const providerMap = new Map(allProviders.map((p) => [p.id, deserializeProvider(p)]));
 
   const resolver = new ModelResolver({
-    getModel: (id) => modelMap.get(id) as Model | undefined,
-    getProvider: (id) => providerMap.get(id) as Provider | undefined,
+    getModel: (id) => modelMap.get(id),
+    getProvider: (id) => providerMap.get(id),
   });
 
   const resolved = resolver.resolve(modelId);

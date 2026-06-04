@@ -21,7 +21,6 @@ import { CommandCodeAdapter } from "./adapters/commandcode/adapter.js";
 import { PassthroughAdapter } from "./adapters/custom/index.js";
 import { generateToken, maskToken } from "./core/auth/token.js";
 import { decrypt } from "./core/auth/encryption.js";
-import { resetEncryptionKey } from "./core/auth/encryption.js";
 import { authTokens } from "./db/schema/auth_tokens.js";
 import { providers, models as modelsTable } from "./db/schema/index.js";
 import { eq, count } from "drizzle-orm";
@@ -65,8 +64,8 @@ export function createApp(db: DbClient): Hono {
       return {
         id: row.id,
         displayName: row.displayName,
-        providerId: row.providerId!,
-        providerModel: row.providerModel!,
+        providerId: row.providerId ?? "",
+        providerModel: row.providerModel ?? "",
         type: "real",
         createdAt: new Date(row.createdAt),
         updatedAt: new Date(row.updatedAt),
@@ -77,10 +76,10 @@ export function createApp(db: DbClient): Hono {
       id: row.id,
       displayName: row.displayName,
       type: "virtual",
-      variant: (row.variant as "fallback" | "tuned") ?? "fallback",
-      fallbackChain: row.fallbackChain ? JSON.parse(row.fallbackChain) : undefined,
+      variant: (row.variant as "fallback" | "tuned" | undefined) ?? "fallback",
+      fallbackChain: row.fallbackChain ? (JSON.parse(row.fallbackChain) as string[]) : undefined,
       baseModelId: row.baseModelId ?? undefined,
-      overrides: row.overrides ? JSON.parse(row.overrides) : undefined,
+      overrides: row.overrides ? (JSON.parse(row.overrides) as Record<string, unknown>) : undefined,
       createdAt: new Date(row.createdAt),
       updatedAt: new Date(row.updatedAt),
     };
@@ -98,7 +97,7 @@ export function createApp(db: DbClient): Hono {
       baseUrl: row.baseUrl,
       apiKey: row.apiKey,
       enabled: row.enabled,
-      config: row.config ? JSON.parse(row.config) : undefined,
+      config: row.config ? (JSON.parse(row.config) as Record<string, unknown>) : undefined,
       createdAt: new Date(row.createdAt),
       updatedAt: new Date(row.updatedAt),
     };
@@ -125,7 +124,7 @@ export function createApp(db: DbClient): Hono {
     registry,
     getProviderCredentials,
     fetchFn: globalThis.fetch,
-    onLog: (log) => requestLogger.logFromProxy(log),
+    onLog: (log) => { requestLogger.logFromProxy(log); },
   });
 
   const app = new Hono();
@@ -236,18 +235,18 @@ export async function startServer(opts?: StartServerOptions): Promise<StartedSer
     }
 
     if (activeConnections > 0) {
-      console.warn(`Shutdown timeout reached with ${activeConnections} active connections remaining`);
+      console.warn(`Shutdown timeout reached with ${String(activeConnections)} active connections remaining`);
     }
 
-    server.stop();
+    void server.stop();
   }
 
-  process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
-  process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+  process.on("SIGTERM", () => { void gracefulShutdown("SIGTERM"); });
+  process.on("SIGINT", () => { void gracefulShutdown("SIGINT"); });
 
   return {
-    url: `http://localhost:${port}`,
-    stop: () => server.stop(),
+    url: `http://localhost:${String(port)}`,
+    stop: () => { void server.stop(); },
     triggerShutdown: gracefulShutdown,
     get activeConnections() { return activeConnections; },
     get shuttingDown() { return shuttingDown; },

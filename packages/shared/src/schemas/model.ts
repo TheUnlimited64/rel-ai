@@ -3,7 +3,7 @@ import { z } from "zod";
 export const RealModelSchema = z.object({
   id: z.string(),
   displayName: z.string().min(1),
-  providerId: z.string().uuid(),
+  providerId: z.uuid(),
   providerModel: z.string().min(1),
   type: z.literal("real"),
   createdAt: z.date(),
@@ -35,7 +35,7 @@ export type Model = z.infer<typeof ModelSchema>;
 
 export const CreateRealModelSchema = z.object({
   displayName: z.string().min(1),
-  providerId: z.string().uuid(),
+  providerId: z.uuid(),
   providerModel: z.string().min(1),
   type: z.literal("real"),
 }).strict();

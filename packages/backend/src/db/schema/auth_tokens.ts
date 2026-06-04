@@ -16,9 +16,7 @@ export const authTokens = sqliteTable(
       .default(sql`(datetime('now'))`),
     lastUsedAt: text("last_used_at"),
   },
-  (table) => ({
-    tokenHashUnique: uniqueIndex("auth_tokens_token_hash_unique").on(
-      table.tokenHash,
-    ),
-  }),
+  (table) => [
+    uniqueIndex("auth_tokens_token_hash_unique").on(table.tokenHash),
+  ],
 );

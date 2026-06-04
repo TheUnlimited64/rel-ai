@@ -2,8 +2,8 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "src"
+    "rootDir": "src",
+    "types": ["@types/bun"]
   },
-  "include": ["src"],
-  "exclude": ["src/schemas/__tests__"]
+  "include": ["src", "src/**/__tests__/**"]
 }

@@ -55,7 +55,7 @@ export async function validateToken(
   token: string,
 ): Promise<typeof authTokens.$inferSelect | null> {
   const hash = await hashToken(token);
-  return db.transaction(async (tx) => {
+  return db.transaction((tx) => {
     const row = tx.select().from(authTokens).where(eq(authTokens.tokenHash, hash)).get();
     if (!row) return null;
     tx.update(authTokens)

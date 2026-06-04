@@ -22,7 +22,7 @@ export function useModels() {
   const [typeFilter, setTypeFilter] = useState<ModelTypeFilter>("all");
 
   const deleteMutation = trpcHooks.models.delete.useMutation({
-    onSuccess: async (_result, { id }) => {
+    onSuccess: (_result, { id }) => {
       utils.models.list.setData(undefined, (prev) =>
         prev ? prev.filter((x) => x.id !== id) : prev,
       );

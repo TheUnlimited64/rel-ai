@@ -78,7 +78,7 @@ export function mapServiceError<T>(fn: () => T | Promise<T>): Promise<T> {
         const jsonPart = msg.slice("HAS_DEPENDENTS:".length);
         let dependents: string[] = [];
         try {
-          dependents = JSON.parse(jsonPart);
+          dependents = JSON.parse(jsonPart) as string[];
         } catch {
           dependents = [];
         }
@@ -101,9 +101,9 @@ export function mapServiceError<T>(fn: () => T | Promise<T>): Promise<T> {
     try {
       mapError(e);
       // mapError always throws, but TypeScript doesn't know that
-      return Promise.reject(e);
+      return Promise.reject(e instanceof Error ? e : new Error(String(e)));
     } catch (mapped) {
-      return Promise.reject(mapped);
+      return Promise.reject(mapped instanceof Error ? mapped : new Error(String(mapped)));
     }
   }
 }
@@ -127,7 +127,7 @@ export const modelsRouter = createTRPCRouter({
       return mapServiceError(() => createVirtualTunedModel(ctx.db, input));
     }),
 
-  list: protectedProcedure.query(async ({ ctx }) => {
+  list: protectedProcedure.query(({ ctx }) => {
     return listModels(ctx.db);
   }),
 

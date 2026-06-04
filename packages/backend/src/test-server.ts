@@ -16,7 +16,7 @@ const ADMIN_TOKEN = "e2e-test-token-12345";
 // --- Mock SSE Provider Server ---
 const mockApp = new Hono();
 
-mockApp.post("/v1/chat/completions", (c) => {
+mockApp.post("/v1/chat/completions", () => {
   const stream = new ReadableStream({
     start(controller) {
       const encoder = new TextEncoder();
@@ -43,11 +43,11 @@ mockApp.post("/v1/chat/completions", (c) => {
 });
 
 const mockServer = Bun.serve({ fetch: mockApp.fetch, port: MOCK_PROVIDER_PORT });
-console.log(`[e2e] Mock provider server on http://localhost:${MOCK_PROVIDER_PORT}`);
+console.log(`[e2e] Mock provider server on http://localhost:${String(MOCK_PROVIDER_PORT)}`);
 
 // --- Start RelAI Backend ---
 const { db, stop } = await startServer({ port: TEST_PORT, dbPath: ":memory:" });
-console.log(`[e2e] RelAI backend on http://localhost:${TEST_PORT}`);
+console.log(`[e2e] RelAI backend on http://localhost:${String(TEST_PORT)}`);
 
 // --- Seed admin token ---
 await seedTestToken(db, ADMIN_TOKEN);
@@ -61,7 +61,7 @@ db.insert(providers)
     id: "e2e-test-provider",
     name: "E2E Test Provider",
     adapterType: "custom",
-    baseUrl: `http://localhost:${MOCK_PROVIDER_PORT}/v1`,
+    baseUrl: `http://localhost:${String(MOCK_PROVIDER_PORT)}/v1`,
     apiKey: encryptedKey,
     enabled: true,
   })
@@ -88,16 +88,16 @@ for (const entry of logEntries) {
     createdAt: new Date().toISOString(),
   }).run();
 }
-console.log(`[e2e] Seeded ${logEntries.length} log entries`);
+console.log(`[e2e] Seeded ${String(logEntries.length)} log entries`);
 
 // --- Graceful shutdown ---
 process.on("SIGINT", () => {
-  mockServer.stop();
+  void mockServer.stop();
   stop();
   process.exit(0);
 });
 process.on("SIGTERM", () => {
-  mockServer.stop();
+  void mockServer.stop();
   stop();
   process.exit(0);
 });

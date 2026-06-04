@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure } from "../trpc.js";
 import { EndpointPathSchema } from "@rel-ai/shared";
 import {
@@ -40,7 +39,7 @@ export const endpointsRouter = createTRPCRouter({
       return createEndpoint(ctx.db, input);
     }),
 
-  list: protectedProcedure.query(async ({ ctx }) => {
+  list: protectedProcedure.query(({ ctx }) => {
     return listEndpoints(ctx.db);
   }),
 

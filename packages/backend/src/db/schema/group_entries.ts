@@ -11,7 +11,7 @@ export const groupEntries = sqliteTable(
     virtualName: text("virtual_name").notNull(),
     modelId: text("model_id").references(() => models.id, { onDelete: "set null" }),
   },
-  (table) => ({
-    pk: primaryKey({ columns: [table.groupId, table.virtualName] }),
-  }),
+  (table) => [
+    primaryKey({ columns: [table.groupId, table.virtualName] }),
+  ],
 );

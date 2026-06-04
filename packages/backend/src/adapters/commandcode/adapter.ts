@@ -115,20 +115,19 @@ export class CommandCodeAdapter implements ProviderAdapter {
         continue;
       }
 
-      if (m.role === "tool") {
-        if (!m.tool_call_id || !pairedIds.has(m.tool_call_id)) continue;
-        out.push({
-          role: "tool",
-          content: [
-            {
-              type: "tool-result",
-              toolCallId: m.tool_call_id,
-              toolName: m.name ?? "",
-              output: { type: "text", value: contentToString(m.content) },
-            },
-          ],
-        });
-      }
+      // m.role === "tool" at this point (all other roles handled above with continue)
+      if (!m.tool_call_id || !pairedIds.has(m.tool_call_id)) continue;
+      out.push({
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: m.tool_call_id,
+            toolName: m.name ?? "",
+            output: { type: "text", value: contentToString(m.content) },
+          },
+        ],
+      });
     }
 
     return { system: systemParts.join("\n\n"), messages: out };
@@ -140,12 +139,13 @@ export class CommandCodeAdapter implements ProviderAdapter {
     stream: boolean;
     overrides?: Record<string, unknown>;
   }): { url: string; headers: Record<string, string>; body: unknown } {
-    const apiKey = (params.overrides?.apiKey as string) ?? this.defaultApiKey ?? "";
+    const apiKey = (params.overrides?.apiKey as string | undefined) ?? this.defaultApiKey ?? "";
     if (!apiKey || apiKey.trim() === "") {
       throw new Error("Command Code API key is required");
     }
 
-    const baseUrl = (params.overrides?.baseUrl as string) ?? this.defaultBaseUrl ?? "https://api.commandcode.ai";
+    const baseUrl = (params.overrides?.baseUrl as string | undefined) ?? this.defaultBaseUrl ?? "https://api.commandcode.ai";
+
 
     const sessionId = crypto.randomUUID();
 
@@ -153,7 +153,7 @@ export class CommandCodeAdapter implements ProviderAdapter {
 
     const max_tokens = (params.overrides?.max_tokens as number | undefined) ?? 4096;
 
-    const overrides = params.overrides ?? ({} as Record<string, unknown>);
+    const overrides: Record<string, unknown> = params.overrides ?? {};
 
     const rawTools = overrides.tools as OpenAITool[] | undefined;
     const temperature = overrides.temperature as number | undefined;
@@ -228,20 +228,20 @@ export class CommandCodeAdapter implements ProviderAdapter {
 
       let parsed: Record<string, unknown>;
       try {
-        parsed = JSON.parse(trimmed);
+        parsed = JSON.parse(trimmed) as Record<string, unknown>;
       } catch {
         continue;
       }
 
       if (parsed.success === false) {
         const errObj = parsed.error as Record<string, unknown> | undefined;
-        const errMsg = errObj?.message ?? String(parsed.error) ?? "CC request rejected";
+        const errMsg = (errObj?.message as string | undefined) ?? String(parsed.error);
         throw new Error(typeof errMsg === "string" ? errMsg : "CC request rejected");
       }
 
       switch (parsed.type) {
         case "text-delta":
-          content = (content ?? "") + ((parsed.text as string) ?? "");
+          content = (content ?? "") + ((parsed.text as string | undefined) ?? "");
           break;
 
         case "text-start":
@@ -249,7 +249,7 @@ export class CommandCodeAdapter implements ProviderAdapter {
           break;
 
         case "reasoning-delta":
-          thinking = (thinking ?? "") + ((parsed.text as string) ?? "");
+          thinking = (thinking ?? "") + ((parsed.text as string | undefined) ?? "");
           break;
 
         case "reasoning-start":
@@ -304,8 +304,8 @@ export class CommandCodeAdapter implements ProviderAdapter {
           const totalUsage = parsed.totalUsage as Record<string, unknown> | undefined;
           if (totalUsage) {
             usage = {
-              promptTokens: (totalUsage.inputTokens as number) ?? 0,
-              completionTokens: (totalUsage.outputTokens as number) ?? 0,
+              promptTokens: (totalUsage.inputTokens as number | undefined) ?? 0,
+              completionTokens: (totalUsage.outputTokens as number | undefined) ?? 0,
             };
             usageMode = "total";
           }
@@ -317,7 +317,7 @@ export class CommandCodeAdapter implements ProviderAdapter {
 
         case "error": {
           const errObj = parsed.error as Record<string, unknown> | undefined;
-          const errMsg = errObj?.message ?? String(parsed.error) ?? "Stream error";
+          const errMsg = (errObj?.message as string | undefined) ?? String(parsed.error);
           throw new Error(typeof errMsg === "string" ? errMsg : "Stream error");
         }
 
@@ -345,8 +345,8 @@ export class CommandCodeAdapter implements ProviderAdapter {
 
   private parseCroppedUsage(u: Record<string, unknown> | undefined): TokenUsage | undefined {
     if (!u) return undefined;
-    const input = (u.inputTokens as number) ?? 0;
-    const output = (u.outputTokens as number) ?? 0;
+    const input = (u.inputTokens as number | undefined) ?? 0;
+    const output = (u.outputTokens as number | undefined) ?? 0;
     if (input === 0 && output === 0) return undefined;
     return { promptTokens: input, completionTokens: output };
   }
@@ -416,7 +416,7 @@ export class CommandCodeAdapter implements ProviderAdapter {
         return { success: true, latencyMs };
       }
       const errBody = await response.text().catch(() => "");
-      return { success: false, error: `HTTP ${response.status}: ${errBody.slice(0, 200)}`, latencyMs };
+      return { success: false, error: `HTTP ${String(response.status)}: ${errBody.slice(0, 200)}`, latencyMs };
     } catch (err) {
       const latencyMs = Date.now() - start;
       return { success: false, error: err instanceof Error ? err.message : "Unknown error", latencyMs };

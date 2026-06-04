@@ -6,7 +6,7 @@ export const ENDPOINT_PATH_MESSAGE = "Path must be lowercase alphanumeric with h
 export const EndpointPathSchema = z.string().regex(ENDPOINT_PATH_REGEX, ENDPOINT_PATH_MESSAGE);
 
 export const EndpointSchema = z.object({
-  id: z.string().uuid(),
+  id: z.uuid(),
   name: z.string().min(1),
   path: EndpointPathSchema,
   token: z.string(),

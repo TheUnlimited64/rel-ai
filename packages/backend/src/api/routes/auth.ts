@@ -14,7 +14,7 @@ export function createAuthRoutes(): Hono {
   const app = new Hono();
 
   app.post("/login", async (c) => {
-    const body = await c.req.json().catch(() => null);
+    const body: { password?: unknown } | null = await c.req.json<{ password?: unknown }>().catch(() => null);
     if (!body || typeof body.password !== "string") {
       return c.json({ error: "Password is required" }, 400);
     }

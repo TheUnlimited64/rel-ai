@@ -65,7 +65,7 @@ export async function createProvider(
   const id = crypto.randomUUID();
   const encryptedKey = await encrypt(input.apiKey);
   const configJson = input.config ? JSON.stringify(input.config) : null;
-  const now = new Date().toISOString().replace("T", " ").split(".")[0]!;
+  const now = new Date().toISOString().replace("T", " ").split(".")[0] ?? "";
 
   // Synchronous DB call blocks the event loop — acceptable for homelab scale where concurrency is low
   // TODO: Migrate to async drizzle queries for production scale
@@ -128,7 +128,7 @@ export async function updateProvider(
   if (input.apiKey !== undefined) updates.apiKey = await encrypt(input.apiKey);
   if (input.config !== undefined) updates.config = JSON.stringify(input.config);
 
-  const now = new Date().toISOString().replace("T", " ").split(".")[0]!;
+  const now = new Date().toISOString().replace("T", " ").split(".")[0] ?? "";
   updates.updatedAt = now;
 
   // Synchronous DB call blocks the event loop — acceptable for homelab scale where concurrency is low
@@ -141,7 +141,7 @@ export async function updateProvider(
   return toResponse(row, masked);
 }
 
-export async function deleteProvider(db: DbClient, id: string): Promise<{ success: boolean }> {
+export function deleteProvider(db: DbClient, id: string): { success: boolean } {
   const existing = db.select().from(providers).where(eq(providers.id, id)).get();
   if (!existing) throw new Error("NOT_FOUND");
 
@@ -168,7 +168,7 @@ export async function regenerateApiKey(
   const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
   const rawKey = `sk_${hex}`;
   const encryptedKey = await encrypt(rawKey);
-  const now = new Date().toISOString().replace("T", " ").split(".")[0]!;
+  const now = new Date().toISOString().replace("T", " ").split(".")[0] ?? "";
 
   // Synchronous DB call blocks the event loop — acceptable for homelab scale where concurrency is low
   // TODO: Migrate to async drizzle queries for production scale
@@ -193,7 +193,7 @@ export async function testProviderConnection(
 
   const apiKey = await decrypt(row.apiKey);
   const baseUrl = row.baseUrl.replace(/\/$/, "");
-  const adapterType = row.adapterType as string;
+  const adapterType = row.adapterType;
 
   const adapter = registry.has(adapterType) ? registry.get(adapterType) : null;
   if (adapter?.testConnection) {
@@ -216,7 +216,7 @@ export async function testProviderConnection(
     if (!response.ok) {
       return {
         success: false,
-        error: `HTTP ${response.status}: ${response.statusText}`,
+        error: `HTTP ${String(response.status)}: ${response.statusText}`,
         latencyMs,
       };
     }

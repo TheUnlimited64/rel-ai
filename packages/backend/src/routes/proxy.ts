@@ -1,6 +1,5 @@
 import { Hono } from "hono";
 import type { ProxyHandler } from "../core/proxy/handler.js";
-import type { RequestLogData } from "../core/proxy/types.js";
 import type { DbClient } from "../db/connection.js";
 import { validateEndpointToken } from "../core/auth/endpoint.js";
 import { extractBearerToken } from "../core/auth/token.js";
@@ -38,11 +37,11 @@ const ChatCompletionSchema = z.object({
         tool_call_id: z.string().optional(),
         name: z.string().optional(),
         reasoning_content: z.string().optional(),
-      }).passthrough(),
+      }).loose(),
     )
     .min(1),
   stream: z.boolean().optional().default(true),
-}).passthrough();
+}).loose();
 
 type EndpointRecord = Awaited<ReturnType<typeof validateEndpointToken>>;
 
@@ -210,7 +209,7 @@ export function createProxyRouter(db: DbClient, handler: ProxyHandler) {
   });
 
   // GET /:endpointPath/models
-  router.get("/:endpointPath/models", async (c) => {
+  router.get("/:endpointPath/models", (c) => {
     const endpoint = c.get("endpoint");
 
     const directRows = db

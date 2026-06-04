@@ -30,14 +30,14 @@ export function parseOpenAISSE(chunk: string): ParsedChunk | null {
 
     let parsed: Record<string, unknown>;
     try {
-      parsed = JSON.parse(data);
+      parsed = JSON.parse(data) as Record<string, unknown>;
     } catch {
       continue;
     }
 
     const choices = parsed.choices as Array<Record<string, unknown>> | undefined;
     if (choices && choices.length > 0) {
-      const choice = choices[0]!;
+      const choice = choices[0] ?? {};
       const delta = choice.delta as Record<string, unknown> | undefined;
       if (delta) {
         if (typeof delta.content === "string") {
@@ -59,8 +59,8 @@ export function parseOpenAISSE(chunk: string): ParsedChunk | null {
     if (parsed.usage && typeof parsed.usage === "object") {
       const u = parsed.usage as Record<string, unknown>;
       usage = {
-        promptTokens: (u.prompt_tokens as number) ?? 0,
-        completionTokens: (u.completion_tokens as number) ?? 0,
+        promptTokens: (u.prompt_tokens as number | undefined) ?? 0,
+        completionTokens: (u.completion_tokens as number | undefined) ?? 0,
       };
     }
   }
@@ -95,8 +95,8 @@ export async function parseOpenAIError(response: Response): Promise<ProviderErro
   const error = (body.error ?? {}) as Record<string, unknown>;
 
   return {
-    code: (error.code as string) ?? "UNKNOWN",
-    message: (error.message as string) ?? "Unknown error",
+    code: (error.code as string | undefined) ?? "UNKNOWN",
+    message: (error.message as string | undefined) ?? "Unknown error",
     status: response.status,
     retryable: response.status >= 500 && response.status < 600,
   };

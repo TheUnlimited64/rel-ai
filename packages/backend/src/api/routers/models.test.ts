@@ -3,8 +3,8 @@ import { TRPCError } from "@trpc/server";
 import { mapServiceError } from "./models.js";
 
 describe("mapServiceError", () => {
-  it("maps sync NOT_FOUND to TRPCError NOT_FOUND", async () => {
-    await expect(
+  it("maps sync NOT_FOUND to TRPCError NOT_FOUND", () => {
+    expect(
       mapServiceError(() => {
         throw new Error("NOT_FOUND");
       }),
@@ -35,26 +35,27 @@ describe("mapServiceError", () => {
     }
   });
 
-  it("re-throws sync non-matching errors unchanged", async () => {
+  it("re-throws sync non-matching errors unchanged", () => {
     const error = new Error("SOMETHING_ELSE");
-    await expect(
+    expect(
       mapServiceError(() => {
         throw error;
       }),
     ).rejects.toBe(error);
   });
 
-  it("re-throws sync non-Error exceptions unchanged", async () => {
+  it("re-throws sync non-Error exceptions unchanged", () => {
     const errStr = "string error";
-    await expect(
+    expect(
       mapServiceError(() => {
+        // eslint-disable-next-line @typescript-eslint/only-throw-error
         throw errStr;
       }),
     ).rejects.toBe(errStr);
   });
 
-  it("maps async NOT_FOUND to TRPCError NOT_FOUND", async () => {
-    await expect(
+  it("maps async NOT_FOUND to TRPCError NOT_FOUND", () => {
+    expect(
       mapServiceError(() => Promise.reject(new Error("NOT_FOUND"))),
     ).rejects.toThrow(TRPCError);
   });
@@ -109,17 +110,20 @@ describe("mapServiceError", () => {
     }
   });
 
-  it("re-throws async non-matching errors unchanged", async () => {
+  it("re-throws async non-matching errors unchanged", () => {
     const error = new Error("SOMETHING_ELSE");
-    await expect(
+    expect(
       mapServiceError(() => Promise.reject(error)),
     ).rejects.toBe(error);
   });
 
-  it("re-throws async non-Error exceptions unchanged", async () => {
+  it("re-throws async non-Error exceptions unchanged", () => {
     const errStr = "string error";
-    await expect(
-      mapServiceError(() => Promise.reject(errStr)),
+    expect(
+      mapServiceError(() => {
+        // eslint-disable-next-line @typescript-eslint/only-throw-error
+        throw errStr;
+      }),
     ).rejects.toBe(errStr);
   });
 

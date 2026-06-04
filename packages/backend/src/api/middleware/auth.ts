@@ -1,10 +1,11 @@
 import type { tRPCContext } from "../context.js";
 
-export const authMiddleware = <T extends { ctx: tRPCContext; next: (...args: any[]) => any }>(
-  opts: T,
-) => {
+export const authMiddleware = (opts: {
+  ctx: tRPCContext;
+  next: (opts: { ctx: tRPCContext & { authorized: true } }) => Promise<unknown>;
+}) => {
   if (!opts.ctx.authorized) {
     throw new Error("UNAUTHORIZED");
   }
-  return opts.next({ ctx: { ...opts.ctx, authorized: true } });
+  return opts.next({ ctx: { ...opts.ctx, authorized: true as const } });
 };

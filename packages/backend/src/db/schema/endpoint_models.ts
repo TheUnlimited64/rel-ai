@@ -16,7 +16,7 @@ export const endpointModels = sqliteTable(
       .notNull()
       .references(() => models.id, { onDelete: "cascade" }),
   },
-  (table) => ({
-    pk: primaryKey(table.endpointId, table.modelId),
-  }),
+  (table) => [
+    primaryKey({ columns: [table.endpointId, table.modelId] }),
+  ],
 );

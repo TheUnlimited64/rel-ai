@@ -62,7 +62,7 @@ export class AnthropicAdapter implements ProviderAdapter {
     }
 
     const apiKey = overrides.apiKey;
-    const baseUrl = (overrides?.baseUrl as string) ?? "https://api.anthropic.com";
+    const baseUrl = (overrides.baseUrl as string | undefined) ?? "https://api.anthropic.com";
 
     const systemMessage = messages
       .filter((m) => m.role === "system")
@@ -73,9 +73,12 @@ export class AnthropicAdapter implements ProviderAdapter {
       .filter((m) => m.role !== "system")
       .map((m) => ({ role: m.role, content: messageToAnthropicContent(m) }));
 
-    const max_tokens = (overrides?.max_tokens as number | undefined) ?? 4096;
+    const max_tokens = (overrides.max_tokens as number | undefined) ?? 4096;
 
-    const { baseUrl: _b, max_tokens: _m, apiKey: _a, ...restOverrides } = overrides ?? ({} as Record<string, unknown>);
+    const restOverrides = { ...overrides } as Record<string, unknown>;
+    delete restOverrides.baseUrl;
+    delete restOverrides.max_tokens;
+    delete restOverrides.apiKey;
 
     const body: Record<string, unknown> = {
       model,
@@ -106,7 +109,7 @@ export class AnthropicAdapter implements ProviderAdapter {
       const parsed = this._parseSingleEvent(event);
       if (parsed !== null) {
         // Merge: later events in same chunk override earlier
-        result = { ...result, ...parsed } as ParsedChunk;
+        result = { ...result, ...parsed };
       }
     }
 
@@ -129,7 +132,7 @@ export class AnthropicAdapter implements ProviderAdapter {
 
     let json: Record<string, unknown>;
     try {
-      json = JSON.parse(data);
+      json = JSON.parse(data) as Record<string, unknown>;
     } catch {
       return null;
     }

@@ -15,7 +15,7 @@ import {
 const CreateProviderInputSchema = z.object({
   name: z.string().min(1),
   adapterType: AdapterTypeSchema,
-  baseUrl: z.string().url(),
+  baseUrl: z.url(),
   apiKey: z.string().min(1),
   config: z.record(z.string(), z.unknown()).optional(),
 });
@@ -24,7 +24,7 @@ const UpdateProviderInputSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1).optional(),
   adapterType: AdapterTypeSchema.optional(),
-  baseUrl: z.string().url().optional(),
+  baseUrl: z.url().optional(),
   apiKey: z.string().min(1).optional(),
   enabled: z.boolean().optional(),
   config: z.record(z.string(), z.unknown()).optional(),

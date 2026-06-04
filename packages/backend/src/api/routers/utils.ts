@@ -1,6 +1,6 @@
 import { TRPCError } from "@trpc/server";
 
-export async function mapNotFound<T>(fn: () => Promise<T>): Promise<T> {
+export async function mapNotFound<T>(fn: () => T | Promise<T>): Promise<T> {
   try {
     return await fn();
   } catch (e) {

@@ -8,8 +8,8 @@ describe("mapNotFound", () => {
     expect(result).toBe("ok");
   });
 
-  it("throws TRPCError NOT_FOUND when fn throws Error with message NOT_FOUND", async () => {
-    await expect(
+  it("throws TRPCError NOT_FOUND when fn throws Error with message NOT_FOUND", () => {
+    expect(
       mapNotFound(() => Promise.reject(new Error("NOT_FOUND"))),
     ).rejects.toThrow(TRPCError);
   });
@@ -24,16 +24,17 @@ describe("mapNotFound", () => {
     }
   });
 
-  it("re-throws non-NOT_FOUND errors unchanged", async () => {
+  it("re-throws non-NOT_FOUND errors unchanged", () => {
     const error = new Error("OTHER_ERROR");
-    await expect(
+    expect(
       mapNotFound(() => Promise.reject(error)),
     ).rejects.toBe(error);
   });
 
-  it("re-throws non-Error exceptions unchanged", async () => {
+  it("re-throws non-Error exceptions unchanged", () => {
     const errStr = "string error";
-    await expect(
+    expect(
+      // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
       mapNotFound(() => Promise.reject(errStr)),
     ).rejects.toBe(errStr);
   });

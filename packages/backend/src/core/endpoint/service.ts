@@ -10,7 +10,7 @@ import type { DbClient } from "../../db/connection.js";
 export type EndpointRow = typeof endpoints.$inferSelect;
 
 function getProxyBase(): string {
-  return process.env.PROXY_BASE_URL ?? `http://localhost:${process.env.PORT || 3000}/v1`;
+  return process.env.PROXY_BASE_URL ?? `http://localhost:${process.env.PORT ?? "3000"}/v1`;
 }
 
 export interface EndpointCreateResponse {
@@ -86,13 +86,14 @@ export async function createEndpoint(
     }
   });
   } catch (err: unknown) {
-    if (err instanceof Error && err.message?.includes("UNIQUE constraint")) {
+    if (err instanceof Error && err.message.includes("UNIQUE constraint")) {
       throw new Error("DUPLICATE_PATH");
     }
     throw err;
   }
 
-  const row = db.select().from(endpoints).where(eq(endpoints.id, id)).get()!;
+  const row = db.select().from(endpoints).where(eq(endpoints.id, id)).get();
+  if (!row) throw new Error("NOT_FOUND");
 
   const proxyBase = getProxyBase();
 
@@ -108,7 +109,7 @@ export async function createEndpoint(
   };
 }
 
-export async function listEndpoints(db: DbClient): Promise<EndpointListResponse[]> {
+export function listEndpoints(db: DbClient): EndpointListResponse[] {
   const rows = db
     .select({
       id: endpoints.id,
@@ -133,15 +134,15 @@ export async function listEndpoints(db: DbClient): Promise<EndpointListResponse[
     enabled: row.enabled,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
-    modelCount: Number(row.modelCount),
+    modelCount: row.modelCount,
     proxyBase,
   }));
 }
 
-export async function getEndpoint(
+export function getEndpoint(
   db: DbClient,
   id: string,
-): Promise<EndpointGetResponse> {
+): EndpointGetResponse {
   const row = db.select().from(endpoints).where(eq(endpoints.id, id)).get();
   if (!row) throw new Error("NOT_FOUND");
 
@@ -186,7 +187,7 @@ export async function getEndpoint(
   };
 }
 
-export async function updateEndpoint(
+export function updateEndpoint(
   db: DbClient,
   input: {
     id: string;
@@ -208,7 +209,7 @@ export async function updateEndpoint(
   }
   if (input.enabled !== undefined) updates.enabled = input.enabled;
 
-  const now = new Date().toISOString().replace("T", " ").split(".")[0]!;
+  const now = new Date().toISOString().replace("T", " ").split(".")[0] ?? "";
   updates.updatedAt = now;
 
   try {
@@ -234,19 +235,19 @@ export async function updateEndpoint(
     }
   });
   } catch (err: unknown) {
-    if (err instanceof Error && err.message?.includes("UNIQUE constraint")) {
+    if (err instanceof Error && err.message.includes("UNIQUE constraint")) {
       throw new Error("DUPLICATE_PATH");
     }
     throw err;
   }
 
-  return getEndpoint(db, input.id);
+  return Promise.resolve(getEndpoint(db, input.id));
 }
 
-export async function deleteEndpoint(
+export function deleteEndpoint(
   db: DbClient,
   id: string,
-): Promise<{ success: boolean }> {
+): { success: boolean } {
   const existing = db.select().from(endpoints).where(eq(endpoints.id, id)).get();
   if (!existing) throw new Error("NOT_FOUND");
 
@@ -265,7 +266,7 @@ export async function regenerateEndpointToken(
   if (!existing) throw new Error("NOT_FOUND");
 
   const { token, hash } = await generateToken();
-  const now = new Date().toISOString().replace("T", " ").split(".")[0]!;
+  const now = new Date().toISOString().replace("T", " ").split(".")[0] ?? "";
 
   // Synchronous DB call blocks the event loop — acceptable for homelab scale where concurrency is low
   // TODO: Migrate to async drizzle queries for production scale
@@ -277,10 +278,10 @@ export async function regenerateEndpointToken(
   return { token };
 }
 
-export async function getEndpointModels(
+export function getEndpointModels(
   db: DbClient,
   id: string,
-): Promise<{ id: string; displayName: string; type: string; providerId: string | null }[]> {
+): { id: string; displayName: string; type: string; providerId: string | null }[] {
   const existing = db.select().from(endpoints).where(eq(endpoints.id, id)).get();
   if (!existing) throw new Error("NOT_FOUND");
 

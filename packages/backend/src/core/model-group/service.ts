@@ -26,7 +26,7 @@ export interface ModelGroupDetailResponse extends ModelGroupResponse {
 }
 
 function now(): string {
-  return new Date().toISOString().replace("T", " ").split(".")[0]!;
+  return new Date().toISOString().replace("T", " ").split(".")[0] ?? "";
 }
 
 export function createModelGroup(
@@ -68,7 +68,7 @@ export function createModelGroup(
     }
   });
 
-  return getModelGroup(db, id)!;
+  return getModelGroup(db, id);
 }
 
 export function listModelGroups(db: DbClient): ModelGroupResponse[] {
@@ -78,7 +78,7 @@ export function listModelGroups(db: DbClient): ModelGroupResponse[] {
     .from(groupEntries)
     .groupBy(groupEntries.groupId)
     .all();
-  const countMap = new Map(counts.map((c) => [c.groupId, Number(c.count)]));
+  const countMap = new Map(counts.map((c) => [c.groupId, c.count]));
 
   return groups.map((row) => ({
     id: row.id,
@@ -273,7 +273,7 @@ export function getEndpointGroupModels(
     .filter((r) => r.modelId !== null)
     .map((r) => ({
       virtualName: r.virtualName,
-      modelId: r.modelId!,
+      modelId: r.modelId ?? "",
       createdAt: r.groupCreatedAt,
     }));
 }

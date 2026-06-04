@@ -26,7 +26,7 @@ describe("ProviderSchema", () => {
   });
 
   it("applies default for enabled", () => {
-    const { enabled, ...without } = validProvider;
+    const { enabled: _enabled, ...without } = validProvider;
     const result = ProviderSchema.parse(without);
     expect(result.enabled).toBe(true);
   });
@@ -58,18 +58,18 @@ describe("ProviderSchema", () => {
 
 describe("CreateProviderSchema", () => {
   it("parses valid create input", () => {
-    const { id, createdAt, updatedAt, ...createInput } = validProvider;
+    const { id: _id, createdAt: _createdAt, updatedAt: _updatedAt, ...createInput } = validProvider;
     const result = CreateProviderSchema.parse(createInput);
     expect(result.name).toBe("Test Provider");
   });
 
   it("rejects id field", () => {
-    const { createdAt, updatedAt, ...withId } = validProvider;
+    const { createdAt: _createdAt2, updatedAt: _updatedAt2, ...withId } = validProvider;
     expect(() => CreateProviderSchema.parse(withId)).toThrow();
   });
 
   it("rejects createdAt/updatedAt", () => {
-    const { id, ...withTimestamps } = validProvider;
+    const { id: _id2, ...withTimestamps } = validProvider;
     expect(() => CreateProviderSchema.parse(withTimestamps)).toThrow();
   });
 });

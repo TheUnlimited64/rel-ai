@@ -19,15 +19,17 @@ export class PassthroughAdapter implements ProviderAdapter {
     overrides?: Record<string, unknown>;
   }): { url: string; headers: Record<string, string>; body: unknown } {
     const { model, messages, stream, overrides } = params;
-    const baseUrl = (overrides?.baseUrl as string) ?? "";
-    const apiKey = (overrides?.apiKey as string) ?? "";
+    const baseUrl = (overrides?.baseUrl as string | undefined) ?? "";
+    const apiKey = (overrides?.apiKey as string | undefined) ?? "";
 
     if (!baseUrl) {
       throw new Error("PassthroughAdapter: baseUrl is required (pass via overrides.baseUrl)");
     }
 
     // Strip internal keys before forwarding
-    const { apiKey: _a, baseUrl: _b, ...restOverrides } = overrides ?? ({} as Record<string, unknown>);
+    const restOverrides = { ...(overrides ?? {}) } as Record<string, unknown>;
+    delete restOverrides.apiKey;
+    delete restOverrides.baseUrl;
 
     const body: Record<string, unknown> = {
       model,

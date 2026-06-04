@@ -26,13 +26,13 @@ export const requestLogs = sqliteTable(
       .notNull()
       .default(sql`(datetime('now'))`),
   },
-  (table) => ({
-    endpointIdx: index("idx_request_logs_endpoint").on(table.endpointId),
-    createdIdx: index("idx_request_logs_created").on(table.createdAt),
-    providerIdx: index("idx_request_logs_provider").on(table.providerId),
-    statusCheck: check(
+  (table) => [
+    index("idx_request_logs_endpoint").on(table.endpointId),
+    index("idx_request_logs_created").on(table.createdAt),
+    index("idx_request_logs_provider").on(table.providerId),
+    check(
       "request_logs_status_check",
       sql`${table.status} IN ('success', 'error', 'rate_limited')`,
     ),
-  }),
+  ],
 );

@@ -115,25 +115,25 @@ export class RequestLogQuery {
 
     const totalRequests = overall.total;
     const successRate = totalRequests > 0
-      ? Number(overall.successCount) / totalRequests
+      ? overall.successCount / totalRequests
       : 0;
 
     return {
       totalRequests,
       successRate: Math.round(successRate * 1000) / 1000,
-      avgLatencyMs: overall.avgLatency ? Math.round(Number(overall.avgLatency)) : null,
-      totalTokens: Number(overall.totalPromptTokens) + Number(overall.totalCompletionTokens),
+      avgLatencyMs: overall.avgLatency ? Math.round(overall.avgLatency) : null,
+      totalTokens: overall.totalPromptTokens + overall.totalCompletionTokens,
       byProvider: byProviderRows.map((r) => ({
         id: r.id ?? "",
         count: r.count,
-        successRate: r.count > 0 ? Math.round((Number(r.successCount) / r.count) * 1000) / 1000 : 0,
-        avgLatencyMs: r.avgLatency ? Math.round(Number(r.avgLatency)) : null,
+        successRate: r.count > 0 ? Math.round((r.successCount / r.count) * 1000) / 1000 : 0,
+        avgLatencyMs: r.avgLatency ? Math.round(r.avgLatency) : null,
       })),
       byModel: byModelRows.map((r) => ({
         id: r.id,
         count: r.count,
-        successRate: r.count > 0 ? Math.round((Number(r.successCount) / r.count) * 1000) / 1000 : 0,
-        avgLatencyMs: r.avgLatency ? Math.round(Number(r.avgLatency)) : null,
+        successRate: r.count > 0 ? Math.round((r.successCount / r.count) * 1000) / 1000 : 0,
+        avgLatencyMs: r.avgLatency ? Math.round(r.avgLatency) : null,
       })),
     };
   }

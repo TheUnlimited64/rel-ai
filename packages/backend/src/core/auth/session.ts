@@ -130,7 +130,7 @@ export async function validatePassword(password: string): Promise<boolean> {
 
   let result = 0;
   for (let i = 0; i < a.length; i++) {
-    result |= a[i]! ^ b[i]!;
+    result |= (a[i] ?? 0) ^ (b[i] ?? 0);
   }
   return result === 0;
 }

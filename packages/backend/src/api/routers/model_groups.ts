@@ -38,7 +38,7 @@ export const modelGroupsRouter = createTRPCRouter({
 
   get: protectedProcedure
     .input(IdInput)
-    .query(({ ctx, input }) => mapNotFound(async () => getModelGroup(ctx.db, input.id))),
+    .query(({ ctx, input }) => mapNotFound(() => Promise.resolve(getModelGroup(ctx.db, input.id)))),
 
   update: protectedProcedure
     .input(
@@ -48,7 +48,7 @@ export const modelGroupsRouter = createTRPCRouter({
         description: z.string().nullable().optional(),
       }),
     )
-    .mutation(({ ctx, input }) => mapNotFound(async () => updateModelGroup(ctx.db, input))),
+    .mutation(({ ctx, input }) => mapNotFound(() => Promise.resolve(updateModelGroup(ctx.db, input)))),
 
   delete: protectedProcedure
     .input(IdInput)
@@ -99,6 +99,6 @@ export const modelGroupsRouter = createTRPCRouter({
       }),
     )
     .mutation(({ ctx, input }) =>
-      mapNotFound(async () => removeGroupEntry(ctx.db, input)),
+      mapNotFound(() => Promise.resolve(removeGroupEntry(ctx.db, input))),
     ),
 });

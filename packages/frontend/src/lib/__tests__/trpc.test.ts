@@ -3,7 +3,7 @@ import { customFetch } from "@/lib/trpc";
 
 const toastErrorMock = vi.fn();
 vi.mock("sonner", () => ({
-  toast: { error: (...args: unknown[]) => toastErrorMock(...args) },
+  toast: { error: (...args: unknown[]) => { toastErrorMock(...args); } },
 }));
 
 const originalLocation = window.location;
@@ -14,12 +14,11 @@ function setLocation(pathname: string) {
   Object.defineProperty(window, "location", {
     writable: true,
     configurable: true,
-    value: {
-      ...originalLocation,
+    value: Object.assign(Object.create(null) as object, originalLocation, {
       pathname,
       get href() { return locationHref; },
       set href(v: string) { locationHref = v; },
-    },
+    }),
   });
 }
 

@@ -135,10 +135,7 @@ function deepMerge(
       isPlainObject(baseVal) &&
       isPlainObject(overlayVal)
     ) {
-      result[key] = deepMerge(
-        baseVal as Record<string, unknown>,
-        overlayVal as Record<string, unknown>,
-      );
+      result[key] = deepMerge(baseVal, overlayVal);
     } else {
       result[key] = overlayVal;
     }

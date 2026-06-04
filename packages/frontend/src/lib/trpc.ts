@@ -8,10 +8,10 @@ export function customFetch(url: RequestInfo | URL, options?: RequestInit) {
     if (response.status === 401 && !window.location.pathname.startsWith("/login")) {
       toast.error("Session expired. Please sign in again.");
     } else if (!response.ok && response.status !== 401) {
-      console.warn(`[customFetch] HTTP ${response.status} ${response.statusText} for ${url}`);
+      console.warn(`[customFetch] HTTP ${String(response.status)} ${response.statusText} for ${typeof url === "string" ? url : url instanceof URL ? url.href : url.url}`);
     }
     return response;
-  }).catch((err) => {
+  }).catch((err: unknown) => {
     throw new Error("Unable to connect to server. Is the backend running?", { cause: err });
   });
 }
