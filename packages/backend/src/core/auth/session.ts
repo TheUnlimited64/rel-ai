@@ -135,7 +135,21 @@ export async function validatePassword(password: string): Promise<boolean> {
   return result === 0;
 }
 
-/** Cookie options for the session cookie */
+/**
+ * Cookie options for the session cookie.
+ *
+ * ⚠️ HTTP deployments: in production (NODE_ENV=production) the session cookie
+ * is set with `Secure: true` by default. Browsers silently drop Secure cookies
+ * on plain HTTP connections, so every request after login appears unauthenticated
+ * ("UNAUTHORIZED" errors in the dashboard).
+ *
+ * Fix: set `COOKIE_SECURE=false` in the environment when serving over HTTP:
+ *   - Docker: add `- COOKIE_SECURE=false` under `environment:` in docker-compose.yml
+ *   - Direct: `export COOKIE_SECURE=false` before starting the server
+ *
+ * Only disable this when behind a trusted reverse proxy that handles TLS
+ * termination, or in a private network where HTTPS is unavailable.
+ */
 export function sessionCookieOptions() {
   const secureOverride = process.env.COOKIE_SECURE;
   const secure = secureOverride !== undefined
