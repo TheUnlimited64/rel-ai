@@ -141,11 +141,10 @@ export async function updateProvider(
   return toResponse(row, masked);
 }
 
-export function deleteProvider(db: DbClient, id: string): { success: boolean } {
+export function deleteProvider(db: DbClient, id: string): Promise<{ success: boolean }> {
   const existing = db.select().from(providers).where(eq(providers.id, id)).get();
   if (!existing) throw new Error("NOT_FOUND");
 
-  // Cascade delete related models in transaction
   // Synchronous DB call blocks the event loop — acceptable for homelab scale where concurrency is low
   // TODO: Migrate to async drizzle queries for production scale
   db.transaction((tx) => {
@@ -153,7 +152,7 @@ export function deleteProvider(db: DbClient, id: string): { success: boolean } {
     tx.delete(providers).where(eq(providers.id, id)).run();
   });
 
-  return { success: true };
+  return Promise.resolve({ success: true });
 }
 
 export async function regenerateApiKey(

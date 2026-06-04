@@ -5,5 +5,5 @@
     "rootDir": "src",
     "types": ["@types/bun"]
   },
-  "include": ["src", "src/**/__tests__/**"]
+  "include": ["src"]
 }

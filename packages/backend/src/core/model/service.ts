@@ -3,7 +3,7 @@ import { models } from "../../db/schema/models.js";
 import { providers } from "../../db/schema/providers.js";
 import type { DbClient } from "../../db/connection.js";
 import { ModelResolver } from "./resolver.js";
-import type { Provider } from "@rel-ai/shared";
+import type { Model, Provider } from "@rel-ai/shared";
 
 export type ModelRow = typeof models.$inferSelect;
 
@@ -365,7 +365,7 @@ export function testResolution(
   const providerMap = new Map(allProviders.map((p) => [p.id, deserializeProvider(p)]));
 
   const resolver = new ModelResolver({
-    getModel: (id) => modelMap.get(id),
+    getModel: (id) => modelMap.get(id) as Model | undefined,
     getProvider: (id) => providerMap.get(id),
   });
 

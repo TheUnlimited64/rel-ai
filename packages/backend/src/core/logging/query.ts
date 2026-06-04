@@ -121,20 +121,23 @@ export class RequestLogQuery {
     return {
       totalRequests,
       successRate: Math.round(successRate * 1000) / 1000,
-      avgLatencyMs: overall.avgLatency ? Math.round(overall.avgLatency) : null,
-      totalTokens: overall.totalPromptTokens + overall.totalCompletionTokens,
+      // SQLite aggregates return strings at runtime despite Drizzle typing them as number
+      /* eslint-disable @typescript-eslint/no-unnecessary-type-conversion */
+      avgLatencyMs: overall.avgLatency ? Math.round(Number(overall.avgLatency)) : null,
+      totalTokens: Number(overall.totalPromptTokens) + Number(overall.totalCompletionTokens),
       byProvider: byProviderRows.map((r) => ({
         id: r.id ?? "",
         count: r.count,
         successRate: r.count > 0 ? Math.round((r.successCount / r.count) * 1000) / 1000 : 0,
-        avgLatencyMs: r.avgLatency ? Math.round(r.avgLatency) : null,
+        avgLatencyMs: r.avgLatency ? Math.round(Number(r.avgLatency)) : null,
       })),
       byModel: byModelRows.map((r) => ({
         id: r.id,
         count: r.count,
         successRate: r.count > 0 ? Math.round((r.successCount / r.count) * 1000) / 1000 : 0,
-        avgLatencyMs: r.avgLatency ? Math.round(r.avgLatency) : null,
+        avgLatencyMs: r.avgLatency ? Math.round(Number(r.avgLatency)) : null,
       })),
+      /* eslint-enable @typescript-eslint/no-unnecessary-type-conversion */
     };
   }
 }

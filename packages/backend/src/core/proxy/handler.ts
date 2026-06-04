@@ -718,8 +718,8 @@ function mergeToolCallDeltas(deltas: import("../provider/types.js").ToolCallDelt
     } else {
       if (d.id) existing.id = d.id;
       if (d.type) existing.type = d.type;
-      if (d.function?.name) existing.function.name = d.function.name;
-      if (d.function?.arguments) existing.function.arguments += d.function.arguments;
+      if (d.function?.name && existing.function) existing.function.name = d.function.name;
+      if (d.function?.arguments && existing.function) existing.function.arguments += d.function.arguments;
     }
   }
   return Array.from(map.values());

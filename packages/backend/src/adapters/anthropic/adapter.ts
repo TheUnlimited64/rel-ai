@@ -108,8 +108,8 @@ export class AnthropicAdapter implements ProviderAdapter {
     for (const event of events) {
       const parsed = this._parseSingleEvent(event);
       if (parsed !== null) {
-        // Merge: later events in same chunk override earlier
-        result = { ...result, ...parsed };
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+        result = { ...result, ...parsed } as ParsedChunk;
       }
     }
 
