@@ -30,18 +30,22 @@
 ## 🚀 Quick Start
 
 ```bash
-git clone https://github.com/your-org/rel-ai.git
+git clone https://github.com/TheUnlimited64/rel-ai.git
 cd rel-ai
+
+# Create secrets directory for encryption key
+mkdir -p secrets
+openssl rand -hex 32 > secrets/encryption_key
+chmod 600 secrets/encryption_key
+
+# Set admin password
 cp .env.example .env
-echo "ENCRYPTION_KEY=$(openssl rand -hex 32)" >> .env
+echo "ADMIN_PASSWORD=yourpassword" >> .env
+
 docker compose up -d
 ```
 
-Open **http://localhost:3000** — check the server logs for your auto-generated admin token.
-
-```bash
-docker logs rel-ai 2>&1 | grep "Admin token"
-```
+Open **http://localhost:3000** and log in with your `ADMIN_PASSWORD`.
 
 ## 📖 Walkthrough
 
@@ -54,12 +58,14 @@ docker logs rel-ai 2>&1 | grep "Admin token"
 
 | Variable | Default | Required | What it does |
 |---|---|---|---|
+| `ADMIN_PASSWORD` | `admin` (dev only) | **yes in production** | Password for the admin UI |
 | `ENCRYPTION_KEY` | auto-generated | recommended | AES-256-GCM key for encrypting API keys |
 | `PORT` | `3000` | no | Server port |
 | `DATABASE_URL` | `./data/rel-ai.db` | no | SQLite database path |
 | `DATA_DIR` | `./data` | no | Directory for key file |
+| `COOKIE_SECURE` | `true` in prod | no | Set to `false` when running on plain HTTP |
 
-No other config — everything else is managed through the UI.
+Everything else is managed through the UI.
 
 ## 🛠️ Development
 
@@ -111,10 +117,11 @@ Set `ENCRYPTION_KEY`, bind a volume for persistence, and you're live.
 ```yaml
 services:
   rel-ai:
-    image: ghcr.io/your-org/rel-ai:latest
+    image: ghcr.io/theunlimited64/rel-ai:latest
     ports:
       - "3000:3000"
     environment:
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
     volumes:
       - rel-ai-data:/app/data

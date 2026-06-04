@@ -8,6 +8,7 @@ services:
       - ./secrets/encryption_key:/run/secrets/encryption_key:ro
     environment:
       - NODE_ENV=production
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - ENCRYPTION_KEY_FILE=/run/secrets/encryption_key
       - PROXY_BASE_URL=${PROXY_BASE_URL}
       - HOST=0.0.0.0

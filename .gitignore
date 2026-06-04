@@ -13,3 +13,16 @@ playwright-report
 
 # Build artifacts
 packages/backend/public/
+
+# Runtime data (keep dir via .gitkeep)
+data/
+
+# Secrets
+secrets/
+
+# Internal dev tooling
+.tickets/
+.codenomad/
+.claude/
+.sisyphus/
+.weave/
