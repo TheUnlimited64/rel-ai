@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { EndpointModelManager } from "./EndpointModelManager";
+import { EndpointGroupManager } from "./EndpointGroupManager";
 import type { EndpointGetResponse, ModelListResponse } from "../api";
 
 const editSchema = z.object({
@@ -18,14 +19,18 @@ type EditFormValues = z.infer<typeof editSchema>;
 interface EndpointEditFormProps {
   endpoint: EndpointGetResponse;
   allModels: ModelListResponse[];
-  onSave: (data: { name: string; path: string; modelIds: string[] }) => Promise<string | undefined>;
+  allGroups: { id: string; name: string }[];
+  onSave: (data: { name: string; path: string; modelIds: string[]; groupIds: string[] }) => Promise<string | undefined>;
   onCancel: () => void;
 }
 
-export function EndpointEditForm({ endpoint, allModels, onSave, onCancel }: EndpointEditFormProps) {
+export function EndpointEditForm({ endpoint, allModels, allGroups, onSave, onCancel }: EndpointEditFormProps) {
   const initIdRef = useRef<string | null>(null);
   const [selectedModelIds, setSelectedModelIds] = useState<Set<string>>(
     new Set(endpoint.models.map((m) => m.id)),
+  );
+  const [selectedGroupIds, setSelectedGroupIds] = useState<Set<string>>(
+    new Set((endpoint.groups ?? []).map((g) => g.id)),
   );
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -40,6 +45,7 @@ export function EndpointEditForm({ endpoint, allModels, onSave, onCancel }: Endp
       initIdRef.current = endpoint.id;
       reset({ name: endpoint.name, path: endpoint.path });
       setSelectedModelIds(new Set(endpoint.models.map((m) => m.id)));
+      setSelectedGroupIds(new Set((endpoint.groups ?? []).map((g) => g.id)));
     }
   });
 
@@ -51,10 +57,22 @@ export function EndpointEditForm({ endpoint, allModels, onSave, onCancel }: Endp
     });
   }
 
+  function toggleGroupId(gid: string) {
+    setSelectedGroupIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(gid)) next.delete(gid); else next.add(gid);
+      return next;
+    });
+  }
+
   async function onSubmit(data: EditFormValues) {
     setSaving(true);
     setError(null);
-    const errMsg = await onSave({ ...data, modelIds: Array.from(selectedModelIds) });
+    const errMsg = await onSave({
+      ...data,
+      modelIds: Array.from(selectedModelIds),
+      groupIds: Array.from(selectedGroupIds),
+    });
     if (errMsg) { setError(errMsg); setSaving(false); }
   }
 
@@ -72,6 +90,7 @@ export function EndpointEditForm({ endpoint, allModels, onSave, onCancel }: Endp
         {!errors.path && <p className="text-xs text-muted-foreground">Lowercase letters, numbers, and hyphens only</p>}
       </div>
       <EndpointModelManager models={allModels} selectedModelIds={selectedModelIds} onToggle={toggleModelId} />
+      <EndpointGroupManager groups={allGroups} selectedGroupIds={selectedGroupIds} onToggle={toggleGroupId} />
       {error && <p className="text-sm text-destructive">{error}</p>}
       <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>

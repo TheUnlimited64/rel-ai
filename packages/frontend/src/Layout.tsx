@@ -3,12 +3,13 @@ import { Toaster } from "sonner";
 import { useAuth } from "./lib/auth";
 import { Button } from "./components/ui/button";
 import { useFirstRun } from "./features/wizard/useFirstRun";
-import { Server, ArrowLeftRight, Layers, Activity, KeyRound, Zap, LogOut } from "lucide-react";
+import { Server, ArrowLeftRight, Layers, Activity, KeyRound, Zap, LogOut, BoxSelect } from "lucide-react";
 
 const navItems = [
   { to: "/providers", label: "Providers", icon: Server },
   { to: "/endpoints", label: "Endpoints", icon: ArrowLeftRight },
   { to: "/models", label: "Models", icon: Layers },
+  { to: "/model-groups", label: "Groups", icon: BoxSelect },
   { to: "/logs", label: "Logs", icon: Activity },
   { to: "/tokens", label: "Tokens", icon: KeyRound },
 ] as const;

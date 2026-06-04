@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { trpcReact as trpcHooks } from "@/lib/trpc";
 import { formatMutationError } from "@/lib/format-error";
 import { EndpointModelManager } from "./EndpointModelManager";
+import { EndpointGroupManager } from "./EndpointGroupManager";
 
 const formSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -24,8 +25,10 @@ interface EndpointFormProps {
 
 export function EndpointForm({ onSuccess, onCancel, skipLabel = "Cancel" }: EndpointFormProps) {
   const [selectedModelIds, setSelectedModelIds] = useState<Set<string>>(new Set());
+  const [selectedGroupIds, setSelectedGroupIds] = useState<Set<string>>(new Set());
   const utils = trpcHooks.useUtils();
   const { data: models } = trpcHooks.models.list.useQuery();
+  const { data: groups } = trpcHooks.modelGroups.list.useQuery();
   const createMutation = trpcHooks.endpoints.create.useMutation({
     onSuccess: async (result) => { await utils.endpoints.list.invalidate(); onSuccess(result); },
   });
@@ -38,8 +41,16 @@ export function EndpointForm({ onSuccess, onCancel, skipLabel = "Cancel" }: Endp
     setSelectedModelIds((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   }
 
+  function toggleGroup(id: string) {
+    setSelectedGroupIds((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+  }
+
   function onSubmit(data: FormValues) {
-    createMutation.mutate({ ...data, modelIds: Array.from(selectedModelIds) });
+    createMutation.mutate({
+      ...data,
+      modelIds: Array.from(selectedModelIds),
+      groupIds: Array.from(selectedGroupIds),
+    });
   }
 
   return (
@@ -56,6 +67,7 @@ export function EndpointForm({ onSuccess, onCancel, skipLabel = "Cancel" }: Endp
         {!errors.path && <p className="text-xs text-muted-foreground">Lowercase letters, numbers, and hyphens only</p>}
       </div>
       <EndpointModelManager models={(models ?? []).map((m) => ({ id: m.id, displayName: m.displayName, type: m.type }))} selectedModelIds={selectedModelIds} onToggle={toggleModel} />
+      <EndpointGroupManager groups={(groups ?? []).map((g) => ({ id: g.id, name: g.name }))} selectedGroupIds={selectedGroupIds} onToggle={toggleGroup} />
       {createMutation.error && (
         <p className="text-sm text-destructive">{formatMutationError(createMutation.error)}</p>
       )}

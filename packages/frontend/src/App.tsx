@@ -11,6 +11,7 @@ import { ModelsPage } from "./features/models/page";
 import { ModelDetailPage } from "./features/models/detail";
 import { LogsPage } from "./features/logs/page";
 import { TokensPage } from "./features/auth/page";
+import { ModelGroupsPage, ModelGroupDetailPage } from "./features/model-groups";
 
 const router = createBrowserRouter([
   {
@@ -38,6 +39,8 @@ const router = createBrowserRouter([
       { path: "models/:id", element: <ModelDetailPage /> },
       { path: "logs", element: <LogsPage /> },
       { path: "tokens", element: <TokensPage /> },
+      { path: "model-groups", element: <ModelGroupsPage /> },
+      { path: "model-groups/:id", element: <ModelGroupDetailPage /> },
     ],
   },
 ]);

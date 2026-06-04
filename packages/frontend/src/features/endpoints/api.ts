@@ -17,6 +17,7 @@ export type EndpointGetResponse = {
   createdAt: string;
   updatedAt: string;
   models: { id: string; displayName: string }[];
+  groups: { id: string; name: string }[];
   proxyBase: string;
 };
 

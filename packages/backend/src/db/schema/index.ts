@@ -4,3 +4,6 @@ export { endpoints } from "./endpoints.js";
 export { endpointModels } from "./endpoint_models.js";
 export { authTokens } from "./auth_tokens.js";
 export { requestLogs } from "./request_logs.js";
+export { modelGroups } from "./model_groups.js";
+export { groupEntries } from "./group_entries.js";
+export { endpointGroups } from "./endpoint_groups.js";

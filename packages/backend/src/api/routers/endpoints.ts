@@ -17,6 +17,7 @@ const CreateEndpointInputSchema = z.object({
   name: z.string().min(1),
   path: EndpointPathSchema,
   modelIds: z.array(z.string()).default([]),
+  groupIds: z.array(z.string()).default([]),
 });
 
 const UpdateEndpointInputSchema = z.object({
@@ -25,6 +26,7 @@ const UpdateEndpointInputSchema = z.object({
   path: EndpointPathSchema.optional(),
   enabled: z.boolean().optional(),
   modelIds: z.array(z.string()).optional(),
+  groupIds: z.array(z.string()).optional(),
 });
 
 const IdInputSchema = z.object({

@@ -256,40 +256,24 @@ export class CommandCodeAdapter implements ProviderAdapter {
         case "reasoning-end":
           break;
 
-        case "tool-input-start": {
-          const id = parsed.id as string;
-          const toolName = parsed.toolName as string;
-          const idx = this.toolCallIndex++;
-          this.activeToolCalls.set(id, { index: idx, id, name: toolName });
-          toolCallDeltas.push({ index: idx, id, type: "function", function: { name: toolName } });
-          break;
-        }
-
-        case "tool-input-delta": {
-          const id = parsed.id as string;
-          const delta = parsed.delta as string;
-          const active = this.activeToolCalls.get(id);
-          if (active) {
-            toolCallDeltas.push({ index: active.index, function: { arguments: delta } });
-          }
-          break;
-        }
-
+        case "tool-input-start":
+        case "tool-input-delta":
         case "tool-input-end":
+          // Suppress all streaming tool events. Reasons:
+          // 1. tool-input-delta: CC can split delta values across NDJSON lines →
+          //    bytes dropped → corrupt argument JSON.
+          // 2. tool-input-start without a guaranteed tool-call follow-up leaves
+          //    clients with a call that has a name but empty arguments → malformed.
+          // The tool-call event (below) is the only reliable source of complete args.
           break;
 
         case "tool-call": {
           const toolCallId = parsed.toolCallId as string;
           const toolName = parsed.toolName as string;
           const input = parsed.input as Record<string, unknown> | undefined;
-          // If tool-input-start already streamed this call, skip re-emission.
-          // Emitting again would cause clients to duplicate-concatenate arguments.
-          const existing = this.activeToolCalls.get(toolCallId);
-          if (existing) break;
-          console.log(`[STREAM-TC] ${toolCallId} ${toolName}(${input ? JSON.stringify(input) : ""})`);
-          // No prior streaming: emit the complete tool call atomically.
           const idx = this.toolCallIndex++;
           this.activeToolCalls.set(toolCallId, { index: idx, id: toolCallId, name: toolName });
+          console.log(`[STREAM-TC] ${toolCallId} ${toolName}(${input ? JSON.stringify(input) : ""})`);
           toolCallDeltas.push({
             index: idx,
             id: toolCallId,

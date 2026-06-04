@@ -6,6 +6,7 @@ import { validateEndpointToken } from "../core/auth/endpoint.js";
 import { extractBearerToken } from "../core/auth/token.js";
 import { endpointModels, models } from "../db/schema/index.js";
 import { eq } from "drizzle-orm";
+import { resolveGroupVirtualName, getEndpointGroupModels } from "../core/model-group/service.js";
 import { z } from "zod";
 import type { ProxyRequest } from "../core/proxy/types.js";
 
@@ -141,7 +142,11 @@ export function createProxyRouter(db: DbClient, handler: ProxyHandler) {
       );
     }
 
-    const { model, messages, stream, ...overrides } = parsed.data;
+    const { model: requestedModel, messages, stream, ...overrides } = parsed.data;
+
+    // Translate group virtual name to actual model ID if applicable
+    const resolvedVirtual = resolveGroupVirtualName(db, endpoint.id, requestedModel);
+    const model = resolvedVirtual ?? requestedModel;
 
     // Build proxy request
     const requestId = crypto.randomUUID();
@@ -208,10 +213,9 @@ export function createProxyRouter(db: DbClient, handler: ProxyHandler) {
   router.get("/:endpointPath/models", async (c) => {
     const endpoint = c.get("endpoint");
 
-    const rows = db
+    const directRows = db
       .select({
         id: models.id,
-        displayName: models.displayName,
         createdAt: models.createdAt,
       })
       .from(endpointModels)
@@ -219,12 +223,26 @@ export function createProxyRouter(db: DbClient, handler: ProxyHandler) {
       .where(eq(endpointModels.endpointId, endpoint.id))
       .all();
 
-    const data = rows.map((row) => ({
-      id: row.id,
-      object: "model" as const,
-      created: Math.floor(new Date(row.createdAt).getTime() / 1000),
-      owned_by: "rel-ai",
-    }));
+    const groupRows = getEndpointGroupModels(db, endpoint.id);
+
+    // Deduplicate: direct models take priority; group virtual names are additive
+    const seen = new Set(directRows.map((r) => r.id));
+    const data = [
+      ...directRows.map((row) => ({
+        id: row.id,
+        object: "model" as const,
+        created: Math.floor(new Date(row.createdAt).getTime() / 1000),
+        owned_by: "rel-ai",
+      })),
+      ...groupRows
+        .filter((r) => !seen.has(r.virtualName))
+        .map((r) => ({
+          id: r.virtualName,
+          object: "model" as const,
+          created: Math.floor(new Date(r.createdAt).getTime() / 1000),
+          owned_by: "rel-ai",
+        })),
+    ];
 
     return c.json({
       object: "list",

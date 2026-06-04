@@ -4,9 +4,10 @@ import { Badge } from "@/components/ui/badge";
 interface DetailViewProps {
   proxyUrl: string;
   models: { id: string; displayName: string }[];
+  groups?: { id: string; name: string }[];
 }
 
-export function DetailView({ proxyUrl, models }: DetailViewProps) {
+export function DetailView({ proxyUrl, models, groups = [] }: DetailViewProps) {
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-3 gap-2 text-sm">
@@ -29,6 +30,15 @@ export function DetailView({ proxyUrl, models }: DetailViewProps) {
           {models.length === 0
             ? <span className="text-muted-foreground">None assigned</span>
             : models.map((m) => <Badge key={m.id} variant="secondary" className="mr-1">{m.displayName}</Badge>)
+          }
+        </span>
+      </div>
+      <div className="grid grid-cols-3 gap-2 text-sm">
+        <span className="text-muted-foreground">Groups</span>
+        <span className="col-span-2">
+          {groups.length === 0
+            ? <span className="text-muted-foreground">None assigned</span>
+            : groups.map((g) => <Badge key={g.id} variant="outline" className="mr-1 font-mono">{g.name}</Badge>)
           }
         </span>
       </div>

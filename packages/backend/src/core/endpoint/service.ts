@@ -2,6 +2,8 @@ import { eq, sql } from "drizzle-orm";
 import { generateToken } from "../auth/token.js";
 import { endpoints } from "../../db/schema/endpoints.js";
 import { endpointModels } from "../../db/schema/endpoint_models.js";
+import { endpointGroups } from "../../db/schema/endpoint_groups.js";
+import { modelGroups } from "../../db/schema/model_groups.js";
 import { models } from "../../db/schema/models.js";
 import type { DbClient } from "../../db/connection.js";
 
@@ -41,6 +43,7 @@ export interface EndpointGetResponse {
   createdAt: string;
   updatedAt: string;
   models: { id: string; displayName: string }[];
+  groups: { id: string; name: string }[];
   proxyBase: string;
 }
 
@@ -54,7 +57,7 @@ function validatePath(path: string): void {
 
 export async function createEndpoint(
   db: DbClient,
-  input: { name: string; path: string; modelIds: string[] },
+  input: { name: string; path: string; modelIds: string[]; groupIds?: string[] },
 ): Promise<EndpointCreateResponse> {
   validatePath(input.path);
 
@@ -76,6 +79,10 @@ export async function createEndpoint(
 
     for (const modelId of input.modelIds) {
       tx.insert(endpointModels).values({ endpointId: id, modelId }).run();
+    }
+
+    for (const groupId of (input.groupIds ?? [])) {
+      tx.insert(endpointGroups).values({ endpointId: id, groupId }).run();
     }
   });
   } catch (err: unknown) {
@@ -152,6 +159,20 @@ export async function getEndpoint(
     }
   }
 
+  const groupJunctionRows = db
+    .select({ groupId: endpointGroups.groupId })
+    .from(endpointGroups)
+    .where(eq(endpointGroups.endpointId, id))
+    .all();
+
+  const groupList: { id: string; name: string }[] = [];
+  for (const j of groupJunctionRows) {
+    const g = db.select().from(modelGroups).where(eq(modelGroups.id, j.groupId)).get();
+    if (g) {
+      groupList.push({ id: g.id, name: g.name });
+    }
+  }
+
   return {
     id: row.id,
     name: row.name,
@@ -160,6 +181,7 @@ export async function getEndpoint(
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     models: modelList,
+    groups: groupList,
     proxyBase: getProxyBase(),
   };
 }
@@ -172,6 +194,7 @@ export async function updateEndpoint(
     path?: string;
     enabled?: boolean;
     modelIds?: string[];
+    groupIds?: string[];
   },
 ): Promise<EndpointGetResponse> {
   const existing = db.select().from(endpoints).where(eq(endpoints.id, input.id)).get();
@@ -199,6 +222,14 @@ export async function updateEndpoint(
       tx.delete(endpointModels).where(eq(endpointModels.endpointId, input.id)).run();
       for (const modelId of input.modelIds) {
         tx.insert(endpointModels).values({ endpointId: input.id, modelId }).run();
+      }
+    }
+
+    // Update group associations if provided
+    if (input.groupIds !== undefined) {
+      tx.delete(endpointGroups).where(eq(endpointGroups.endpointId, input.id)).run();
+      for (const groupId of input.groupIds) {
+        tx.insert(endpointGroups).values({ endpointId: input.id, groupId }).run();
       }
     }
   });

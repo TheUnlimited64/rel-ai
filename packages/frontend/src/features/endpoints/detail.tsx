@@ -20,9 +20,11 @@ export function EndpointDetailPage() {
 
   const endpointQuery = trpcHooks.endpoints.get.useQuery({ id: id! }, { enabled: !!id });
   const modelsQuery = trpcHooks.models.list.useQuery();
+  const groupsQuery = trpcHooks.modelGroups.list.useQuery();
   const utils = trpcHooks.useUtils();
   const endpoint = endpointQuery.data;
   const allModels = modelsQuery.data ?? [];
+  const allGroups = groupsQuery.data ?? [];
 
   const updateMutation = trpcHooks.endpoints.update.useMutation({
     onSuccess: async () => { await utils.endpoints.get.invalidate({ id }); await utils.endpoints.list.invalidate(); },
@@ -32,7 +34,7 @@ export function EndpointDetailPage() {
     onSuccess: (result) => setNewToken(result.token),
   });
 
-  async function handleSave(data: { name: string; path: string; modelIds: string[] }) {
+  async function handleSave(data: { name: string; path: string; modelIds: string[]; groupIds: string[] }) {
     if (!id) return "";
     try { await updateMutation.mutateAsync({ id, ...data }); setEditing(false); return ""; }
     catch (err) {
@@ -63,10 +65,10 @@ export function EndpointDetailPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           {editing ? (
-            <EndpointEditForm endpoint={endpoint} allModels={allModels} onSave={handleSave} onCancel={() => setEditing(false)} />
+            <EndpointEditForm endpoint={endpoint} allModels={allModels} allGroups={allGroups} onSave={handleSave} onCancel={() => setEditing(false)} />
           ) : (
             <>
-              <DetailView proxyUrl={proxyUrl} models={endpoint.models} />
+              <DetailView proxyUrl={proxyUrl} models={endpoint.models} groups={endpoint.groups} />
               <Separator />
               <div className="flex gap-2">
                 <Button variant="outline" onClick={() => setEditing(true)}>Edit</Button>
