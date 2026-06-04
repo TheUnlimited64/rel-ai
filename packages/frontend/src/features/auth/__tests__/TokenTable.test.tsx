@@ -70,7 +70,7 @@ describe("TokenTable", () => {
       render(<TokenTable tokens={mockTokens} onDelete={onDelete} />);
 
       const deleteButtons = screen.getAllByText("Delete");
-      await user.click(deleteButtons[0]);
+      await user.click(deleteButtons[0]!);
 
       expect(onDelete).toHaveBeenCalledWith("1");
     });
@@ -81,7 +81,7 @@ describe("TokenTable", () => {
       render(<TokenTable tokens={mockTokens} onDelete={onDelete} />);
 
       const deleteButtons = screen.getAllByText("Delete");
-      await user.click(deleteButtons[1]);
+      await user.click(deleteButtons[1]!);
 
       expect(onDelete).toHaveBeenCalledWith("2");
     });
@@ -91,7 +91,7 @@ describe("TokenTable", () => {
       const user = userEvent.setup();
       render(<TokenTable tokens={mockTokens} onDelete={onDelete} />);
 
-      await user.click(screen.getAllByText("Delete")[0]);
+      await user.click(screen.getAllByText("Delete")[0]!);
 
       expect(onDelete).toHaveBeenCalledTimes(1);
     });
@@ -155,7 +155,7 @@ describe("TokenTable", () => {
     });
 
     it("renders single row plus header for one token", () => {
-      render(<TokenTable tokens={[mockTokens[0]]} onDelete={vi.fn()} />);
+      render(<TokenTable tokens={[mockTokens[0]!]} onDelete={vi.fn()} />);
 
       const rows = screen.getAllByRole("row");
       expect(rows).toHaveLength(2);
