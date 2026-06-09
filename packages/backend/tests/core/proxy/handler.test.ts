@@ -1374,15 +1374,16 @@ describe("ProxyHandler", () => {
       expect((withNonNullFinishReason[0].chunk.choices as Array<{ finish_reason: string }>)[0].finish_reason).toBe("stop");
     });
 
-    test("stream closes without done=true — lastFinishReason from intermediate event used in final done chunk", async () => {
+    test("stream closes without done=true — error chunk with finish_reason error because no receivedExplicitTermination", async () => {
       const chunks: (ParsedChunk | null)[] = [
         { content: "Partial", done: false },
         { finish_reason: "stop", done: false }, // sets lastFinishReason; no done:true ever sent
       ];
+      let capturedLog: unknown;
       const adapter = createScriptedAdapter(chunks);
       const registry = new AdapterRegistry();
       registry.register(adapter);
-      const handler = buildHandlerWithRegistry(registry, [realModelScripted], [providerScripted], createMockFetch([scriptedStreamResponse(2)]));
+      const handler = buildHandlerWithRegistry(registry, [realModelScripted], [providerScripted], createMockFetch([scriptedStreamResponse(2)]), (log) => { capturedLog = log; });
 
       const result = await handler.handle({ model: "scripted-model", messages: [{ role: "user", content: "Hi" }], stream: true });
       expect(result.ok).toBe(true);
@@ -1394,8 +1395,10 @@ describe("ProxyHandler", () => {
       const events = parseSSEEvents(text);
       const dataEvents = events.filter((e): e is { isDone: false; chunk: Record<string, unknown> } => !e.isDone);
       const lastEvent = dataEvents[dataEvents.length - 1];
-      // Final done chunk must carry finish_reason "stop" from lastFinishReason fallback
-      expect((lastEvent.chunk.choices as Array<{ finish_reason: string }>)[0].finish_reason).toBe("stop");
+      // No explicit done:true received → error chunk, not lastFinishReason fallback
+      expect((lastEvent.chunk.choices as Array<{ finish_reason: string }>)[0].finish_reason).toBe("error");
+      expect(capturedLog).toBeDefined();
+      expect((capturedLog as Record<string, unknown>).status).toBe(502);
     });
 
     test("tool_calls + finish_reason in same parsed chunk: tool_calls emitted without finish_reason, done chunk carries finish_reason", async () => {
@@ -1430,6 +1433,130 @@ describe("ProxyHandler", () => {
       // Final chunk: finish_reason is "stop" (not "tool_calls")
       const lastEvent = dataEvents[dataEvents.length - 1];
       expect((lastEvent.chunk.choices as Array<{ finish_reason: string }>)[0].finish_reason).toBe("stop");
+    });
+
+    test("normal completion — done:true with finish_reason emits normal done chunk and status 200", async () => {
+      const chunks: (ParsedChunk | null)[] = [
+        { content: "Hi", done: false },
+        { done: true, finish_reason: "stop" },
+      ];
+      let capturedLog: unknown;
+      const adapter = createScriptedAdapter(chunks);
+      const registry = new AdapterRegistry();
+      registry.register(adapter);
+      const handler = buildHandlerWithRegistry(
+        registry,
+        [realModelScripted],
+        [providerScripted],
+        createMockFetch([scriptedStreamResponse(2)]),
+        (log) => { capturedLog = log; },
+      );
+
+      const result = await handler.handle({ model: "scripted-model", messages: [{ role: "user", content: "Hi" }], stream: true });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      const events = parseSSEEvents((await collectStreamChunks(result.body as ReadableStream)).join(""));
+      const dataEvents = events.filter((e): e is { isDone: false; chunk: Record<string, unknown> } => !e.isDone);
+      const lastEvent = dataEvents[dataEvents.length - 1];
+      // Final chunk carries finish_reason "stop" from explicit done, not "error"
+      expect((lastEvent.chunk.choices as Array<{ finish_reason: string }>)[0].finish_reason).toBe("stop");
+      expect(capturedLog).toBeDefined();
+      expect((capturedLog as Record<string, unknown>).status).toBe(200);
+    });
+
+    test("abnormal stream close — no done:true sent, error chunk with finish_reason error and status 502", async () => {
+      const chunks: (ParsedChunk | null)[] = [
+        { content: "Partial", done: false },
+      ];
+      let capturedLog: unknown;
+      const adapter = createScriptedAdapter(chunks);
+      const registry = new AdapterRegistry();
+      registry.register(adapter);
+      const handler = buildHandlerWithRegistry(
+        registry,
+        [realModelScripted],
+        [providerScripted],
+        createMockFetch([scriptedStreamResponse(1)]),
+        (log) => { capturedLog = log; },
+      );
+
+      const result = await handler.handle({ model: "scripted-model", messages: [{ role: "user", content: "Hi" }], stream: true });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      const text = (await collectStreamChunks(result.body as ReadableStream)).join("");
+      expect(text).toContain("[DONE]");
+
+      const events = parseSSEEvents(text);
+      const dataEvents = events.filter((e): e is { isDone: false; chunk: Record<string, unknown> } => !e.isDone);
+      const lastEvent = dataEvents[dataEvents.length - 1];
+      // Error chunk has finish_reason "error", not "stop"
+      expect((lastEvent.chunk.choices as Array<{ finish_reason: string }>)[0].finish_reason).toBe("error");
+      // Content delta carries JSON with stream_error code
+      const content = (lastEvent.chunk.choices as Array<{ delta: { content?: string } }>)[0].delta?.content ?? "";
+      expect(content).toContain("stream_error");
+      expect(capturedLog).toBeDefined();
+      expect((capturedLog as Record<string, unknown>).status).toBe(502);
+    });
+
+    test("content filter with done:true — finish_reason content_filter not error, status 200", async () => {
+      const chunks: (ParsedChunk | null)[] = [
+        { finish_reason: "content_filter", done: true },
+      ];
+      let capturedLog: unknown;
+      const adapter = createScriptedAdapter(chunks);
+      const registry = new AdapterRegistry();
+      registry.register(adapter);
+      const handler = buildHandlerWithRegistry(
+        registry,
+        [realModelScripted],
+        [providerScripted],
+        createMockFetch([scriptedStreamResponse(1)]),
+        (log) => { capturedLog = log; },
+      );
+
+      const result = await handler.handle({ model: "scripted-model", messages: [{ role: "user", content: "Hi" }], stream: true });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      const events = parseSSEEvents((await collectStreamChunks(result.body as ReadableStream)).join(""));
+      const dataEvents = events.filter((e): e is { isDone: false; chunk: Record<string, unknown> } => !e.isDone);
+      const lastEvent = dataEvents[dataEvents.length - 1];
+      // content_filter must not be overwritten to "error"
+      expect((lastEvent.chunk.choices as Array<{ finish_reason: string }>)[0].finish_reason).toBe("content_filter");
+      expect(capturedLog).toBeDefined();
+      expect((capturedLog as Record<string, unknown>).status).toBe(200);
+    });
+
+    test("CC agentic loop — intermediate finish_reason without done, final chunk has error", async () => {
+      const chunks: (ParsedChunk | null)[] = [
+        { content: "step1", finish_reason: "stop", done: false },
+        { content: "step2", finish_reason: "stop", done: false },
+      ];
+      let capturedLog: unknown;
+      const adapter = createScriptedAdapter(chunks);
+      const registry = new AdapterRegistry();
+      registry.register(adapter);
+      const handler = buildHandlerWithRegistry(
+        registry,
+        [realModelScripted],
+        [providerScripted],
+        createMockFetch([scriptedStreamResponse(2)]),
+        (log) => { capturedLog = log; },
+      );
+
+      const result = await handler.handle({ model: "scripted-model", messages: [{ role: "user", content: "Hi" }], stream: true });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      const events = parseSSEEvents((await collectStreamChunks(result.body as ReadableStream)).join(""));
+      const dataEvents = events.filter((e): e is { isDone: false; chunk: Record<string, unknown> } => !e.isDone);
+      const lastEvent = dataEvents[dataEvents.length - 1];
+      // Stream closed without explicit done → error chunk
+      expect((lastEvent.chunk.choices as Array<{ finish_reason: string }>)[0].finish_reason).toBe("error");
+      expect(capturedLog).toBeDefined();
+      expect((capturedLog as Record<string, unknown>).status).toBe(502);
     });
   });
 

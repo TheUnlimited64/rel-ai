@@ -319,6 +319,8 @@ export class ProxyHandler {
     let lastFinishReason: string | undefined;
     let hadError = false;
     let streamClosed = false;
+    let receivedExplicitTermination = false;
+    let responseStatus = 200;
     let keepaliveTimer: ReturnType<typeof setInterval> | undefined;
 
     const stream = new ReadableStream<Uint8Array>({
@@ -396,6 +398,7 @@ export class ProxyHandler {
                 }
 
                 if (parsed.done) {
+                  receivedExplicitTermination = true;
                   if (parsed.finish_reason) lastFinishReason = parsed.finish_reason;
                   if (lastFinishReason && !streamClosed) {
                     streamClosed = true;
@@ -427,15 +430,30 @@ export class ProxyHandler {
                   totalUsage = mergeUsage(totalUsage, parsed.usage, parsed.usageMode);
                 }
                 if (parsed.content || parsed.thinking || parsed.tool_calls) {
-                  const emitParsed = parsed.tool_calls
-                    ? { ...parsed, finish_reason: undefined, done: false }
-                    : { ...parsed, done: false };
-                  const chunk = formatStreamChunk(id, providerModel, emitParsed);
-                  controller.enqueue(textEncoder.encode(chunk));
+                  if (receivedExplicitTermination) {
+                    // Normal case: emit with done:false so flush content does not
+                    // carry a premature termination signal to the client.
+                    const emitParsed = parsed.tool_calls
+                      ? { ...parsed, finish_reason: undefined, done: false }
+                      : { ...parsed, done: false };
+                    const chunk = formatStreamChunk(id, providerModel, emitParsed);
+                    controller.enqueue(textEncoder.encode(chunk));
+                  } else {
+                    // No explicit termination received — stream closed without
+                    // a done chunk. Emit content only, skip done/finish_reason
+                    // so the stream-close block below handles termination.
+                    const emitParsed = parsed.tool_calls
+                      ? { ...parsed, finish_reason: undefined }
+                      : { ...parsed };
+                    const chunk = formatStreamChunk(id, providerModel, emitParsed);
+                    controller.enqueue(textEncoder.encode(chunk));
+                  }
                 }
-                if (parsed.finish_reason) lastFinishReason = parsed.finish_reason;
-                if (parsed.done && lastFinishReason) {
-                  lastFinishReason = parsed.finish_reason ?? lastFinishReason;
+                if (receivedExplicitTermination) {
+                  if (parsed.finish_reason) lastFinishReason = parsed.finish_reason;
+                  if (parsed.done && lastFinishReason) {
+                    lastFinishReason = parsed.finish_reason ?? lastFinishReason;
+                  }
                 }
               }
             }
@@ -444,17 +462,43 @@ export class ProxyHandler {
             if (!streamClosed) {
               streamClosed = true;
               clearInterval(keepaliveTimer);
-              try {
-                const finalChunk = formatStreamChunk(id, providerModel, {
-                  done: true,
-                  finish_reason: lastFinishReason,
-                  ...(totalUsage ? { usage: totalUsage } : {}),
-                });
-                controller.enqueue(textEncoder.encode(finalChunk));
-                controller.enqueue(textEncoder.encode(formatStreamDone()));
-                controller.close();
-              } catch {
-                // Controller already closed — ignore
+              if (receivedExplicitTermination) {
+                // Normal close — stream properly terminated with explicit done
+                try {
+                  const finalChunk = formatStreamChunk(id, providerModel, {
+                    done: true,
+                    finish_reason: lastFinishReason,
+                    ...(totalUsage ? { usage: totalUsage } : {}),
+                  });
+                  controller.enqueue(textEncoder.encode(finalChunk));
+                  controller.enqueue(textEncoder.encode(formatStreamDone()));
+                  controller.close();
+                } catch {
+                  // Controller already closed — ignore
+                }
+              } else {
+                // Abnormal close — stream closed without explicit done chunk.
+                // Send error chunk so client receives fault signal.
+                responseStatus = 502;
+                try {
+                  const errorPayload = JSON.stringify({
+                    error: {
+                      code: "stream_error",
+                      message: "Provider stream closed without sending finish_reason",
+                    },
+                  });
+                  const errorChunk = formatStreamChunk(id, providerModel, {
+                    done: true,
+                    finish_reason: "error",
+                    content: errorPayload,
+                  });
+                  controller.enqueue(textEncoder.encode(errorChunk));
+                  controller.enqueue(textEncoder.encode(formatStreamDone()));
+                  controller.close();
+                } catch {
+                  // Controller already closed — ignore
+                }
+                console.log(`[STREAM-ERROR] ${id} Provider stream closed without explicit termination at ${String(Math.round(performance.now() - start))}ms`);
               }
             }
 
@@ -464,7 +508,7 @@ export class ProxyHandler {
               providerModel,
               adapterType,
               stream: isStream,
-              status: 200,
+              status: responseStatus,
               durationMs: performance.now() - start,
               tokens: totalUsage,
               endpointId,
