@@ -505,6 +505,7 @@ export class ProxyHandler {
                 // Abnormal close with no content sent — transparent retry.
                 // Provider stream closed before emitting any tokens.
                 // Re-fetch and continue without the client ever knowing.
+                console.log(`[STREAM-DIAG] ${id} buffer on close: ${JSON.stringify(buffer.slice(0, 200))}`);
                 retriesRemaining--;
                 console.log(`[STREAM-RETRY] ${id} 0-token stream error, retrying (${String(retriesRemaining)} left) at ${String(Math.round(performance.now() - start))}ms`);
                 try { await currentReader.cancel(); } catch { /* ignore */ }
@@ -575,6 +576,7 @@ export class ProxyHandler {
                 // Abnormal close — stream closed without explicit done chunk.
                 // Content was already sent to client, can't retry cleanly.
                 // Send error chunk so client receives fault signal.
+                console.log(`[STREAM-DIAG] ${id} buffer on close (content=${String(contentEnqueued)}): ${JSON.stringify(buffer.slice(0, 200))}`);
                 streamClosed = true;
                 clearInterval(keepaliveTimer);
                 responseStatus = 502;
