@@ -17,8 +17,19 @@ import {
 const DEFAULT_TIMEOUT = 120_000;
 const MAX_FALLBACK_ATTEMPTS = 5;
 const textEncoder = new TextEncoder();
+const MAX_STREAM_RETRIES = 2;
 
 type FetchFn = typeof fetch;
+
+interface StreamRetryContext {
+  fetchFn: FetchFn;
+  abortController: AbortController;
+  requestUrl: string;
+  requestHeaders: Record<string, string>;
+  requestBody: string;
+  adapter: ProviderAdapter;
+  timeout: number;
+}
 
 function generateCorrelationId(): string {
   const bytes = new Uint8Array(8);
@@ -244,7 +255,16 @@ export class ProxyHandler {
 
       // Success — proceed with streaming or non-streaming
       if (request.stream) {
-        return this.handleStream(id, request.model, providerModel, adapterType, providerId, response, adapter, start, request.stream, endpointId);
+        const retryContext: StreamRetryContext = {
+          fetchFn: this.fetchFn,
+          abortController,
+          requestUrl: providerRequest.url,
+          requestHeaders: providerRequest.headers,
+          requestBody: JSON.stringify(providerRequest.body),
+          adapter,
+          timeout: this.timeout,
+        };
+        return this.handleStream(id, request.model, providerModel, adapterType, providerId, response, adapter, start, request.stream, endpointId, retryContext);
       }
 
       return this.handleNonStream(id, request.model, providerModel, adapterType, providerId, response, adapter, start, request.stream, endpointId);
@@ -284,6 +304,7 @@ export class ProxyHandler {
     start: number,
     isStream: boolean,
     endpointId: string | undefined,
+    retryContext?: StreamRetryContext,
   ): ProxyResult {
     if ("resetStreamState" in adapter && typeof adapter.resetStreamState === "function") {
       (adapter.resetStreamState as () => void)();
@@ -312,7 +333,6 @@ export class ProxyHandler {
       return { ok: false, status: 502, error };
     }
 
-    const reader = body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
     let totalUsage: { promptTokens: number; completionTokens: number } | undefined;
@@ -322,6 +342,9 @@ export class ProxyHandler {
     let receivedExplicitTermination = false;
     let responseStatus = 200;
     let keepaliveTimer: ReturnType<typeof setInterval> | undefined;
+    let currentReader = body.getReader();
+    let retriesRemaining = MAX_STREAM_RETRIES;
+    let contentEnqueued = false;
 
     const stream = new ReadableStream<Uint8Array>({
       start: (controller) => {
@@ -344,7 +367,7 @@ export class ProxyHandler {
             let readCount = 0;
             let lastReadTime = performance.now();
             for (;;) {
-              const { done, value } = await reader.read();
+              const { done, value } = await currentReader.read();
               const now = performance.now();
               const readGap = now - lastReadTime;
               lastReadTime = now;
@@ -380,6 +403,7 @@ export class ProxyHandler {
                 // to close the stream before CC's agentic loop completes.
                 // finish_reason is only sent in the final done chunk below.
                 if (parsed.content || parsed.thinking || parsed.tool_calls) {
+                  contentEnqueued = true;
                   if (parsed.tool_calls) {
                     const tcNames = parsed.tool_calls.map((tc: ToolCallDelta) => `${tc.function?.name ?? ""}(${tc.id ?? ""})`).join(', ');
                     console.log(`[STREAM-TC] ${id} tool_calls: ${tcNames} at ${String(Math.round(performance.now() - start))}ms`);
@@ -411,7 +435,7 @@ export class ProxyHandler {
                     controller.enqueue(textEncoder.encode(formatStreamDone()));
                     clearInterval(keepaliveTimer);
                     console.log(`[STREAM-DONE] ${id} ${lastFinishReason} at ${String(Math.round(performance.now() - start))}ms, usage=${JSON.stringify(totalUsage)}`);
-                    reader.cancel().catch(() => {});
+                    currentReader.cancel().catch(() => {});
                     try { controller.close(); } catch {}
                     break;
                   }
@@ -430,6 +454,7 @@ export class ProxyHandler {
                   totalUsage = mergeUsage(totalUsage, parsed.usage, parsed.usageMode);
                 }
                 if (parsed.content || parsed.thinking || parsed.tool_calls) {
+                  contentEnqueued = true;
                   if (receivedExplicitTermination) {
                     // Normal case: emit with done:false so flush content does not
                     // carry a premature termination signal to the client.
@@ -460,10 +485,10 @@ export class ProxyHandler {
 
             // Send done if not already sent via early-close
             if (!streamClosed) {
-              streamClosed = true;
-              clearInterval(keepaliveTimer);
               if (receivedExplicitTermination) {
                 // Normal close — stream properly terminated with explicit done
+                streamClosed = true;
+                clearInterval(keepaliveTimer);
                 try {
                   const finalChunk = formatStreamChunk(id, providerModel, {
                     done: true,
@@ -476,21 +501,92 @@ export class ProxyHandler {
                 } catch {
                   // Controller already closed — ignore
                 }
-              } else {
-                // Abnormal close — stream closed without explicit done chunk.
-                // Send error chunk so client receives fault signal.
+              } else if (!contentEnqueued && retryContext && retriesRemaining > 0) {
+                // Abnormal close with no content sent — transparent retry.
+                // Provider stream closed before emitting any tokens.
+                // Re-fetch and continue without the client ever knowing.
+                retriesRemaining--;
+                console.log(`[STREAM-RETRY] ${id} 0-token stream error, retrying (${String(retriesRemaining)} left) at ${String(Math.round(performance.now() - start))}ms`);
+                try { await currentReader.cancel(); } catch { /* ignore */ }
+
+                // Reset stream state for the retry
+                buffer = "";
+                totalUsage = undefined;
+                lastFinishReason = undefined;
+                receivedExplicitTermination = false;
+                responseStatus = 200;
+                contentEnqueued = false;
+
+                if ("resetStreamState" in adapter && typeof adapter.resetStreamState === "function") {
+                  (adapter.resetStreamState as () => void)();
+                }
+
+                try {
+                  // Use abortController.signal so external cancellation propagates.
+                  // The original timeout already fired, so add a fresh timeout.
+                  const retryTimeout = setTimeout(() => { retryContext.abortController.abort(); }, retryContext.timeout);
+                  let retryResponse: Response;
+                  try {
+                    retryResponse = await retryContext.fetchFn(retryContext.requestUrl, {
+                      method: "POST",
+                      headers: retryContext.requestHeaders,
+                      body: retryContext.requestBody,
+                      signal: retryContext.abortController.signal,
+                    });
+                  } finally {
+                    clearTimeout(retryTimeout);
+                  }
+
+                  if (!retryResponse.ok || !retryResponse.body) {
+                    // Retry fetch failed — fall through to error
+                    console.log(`[STREAM-RETRY] ${id} retry fetch failed: status=${String(retryResponse.status)}`);
+                  } else {
+                    currentReader = retryResponse.body.getReader();
+                    void pump();
+                    return;
+                  }
+                } catch (retryErr) {
+                  // Retry fetch threw — fall through to error
+                  const retryMsg = retryErr instanceof Error ? retryErr.message : "Retry fetch error";
+                  console.log(`[STREAM-RETRY] ${id} retry fetch threw: ${retryMsg}`);
+                }
+                // Retry failed or exhausted — fall through to error chunk
+                streamClosed = true;
+                clearInterval(keepaliveTimer);
                 responseStatus = 502;
                 try {
-                  const errorPayload = JSON.stringify({
+                  const errorChunk = formatStreamChunk(id, providerModel, {
+                    done: true,
+                    finish_reason: "error",
+                    content: "⚠ Stream ended unexpectedly. The provider closed the connection without completing the response. Please retry.",
                     error: {
                       code: "stream_error",
                       message: "Provider stream closed without sending finish_reason",
                     },
                   });
+                  controller.enqueue(textEncoder.encode(errorChunk));
+                  controller.enqueue(textEncoder.encode(formatStreamDone()));
+                  controller.close();
+                } catch {
+                  // Controller already closed — ignore
+                }
+                console.log(`[STREAM-ERROR] ${id} Provider stream closed without explicit termination (retries exhausted) at ${String(Math.round(performance.now() - start))}ms`);
+              } else {
+                // Abnormal close — stream closed without explicit done chunk.
+                // Content was already sent to client, can't retry cleanly.
+                // Send error chunk so client receives fault signal.
+                streamClosed = true;
+                clearInterval(keepaliveTimer);
+                responseStatus = 502;
+                try {
                   const errorChunk = formatStreamChunk(id, providerModel, {
                     done: true,
                     finish_reason: "error",
-                    content: errorPayload,
+                    content: "⚠ Stream ended unexpectedly. The provider closed the connection without completing the response. Please retry.",
+                    error: {
+                      code: "stream_error",
+                      message: "Provider stream closed without sending finish_reason",
+                    },
                   });
                   controller.enqueue(textEncoder.encode(errorChunk));
                   controller.enqueue(textEncoder.encode(formatStreamDone()));
@@ -518,7 +614,7 @@ export class ProxyHandler {
               hadError = true;
               streamClosed = true;
               clearInterval(keepaliveTimer);
-              void reader.cancel();
+              void currentReader.cancel();
               const correlationId = generateCorrelationId();
               const rawMsg = err instanceof Error ? err.message : "Stream error";
               console.error(`[STREAM-ERROR] ${id} rawMsg=${rawMsg} at ${String(Math.round(performance.now() - start))}ms`);
@@ -552,7 +648,7 @@ export class ProxyHandler {
         clearInterval(keepaliveTimer);
         console.log(`[STREAM-CANCEL] ${id} downstream cancelled at ${String(Math.round(performance.now() - start))}ms`);
         try {
-          await reader.cancel();
+          await currentReader.cancel();
         } catch {
           // Ignore cancel errors
         }

@@ -33,6 +33,11 @@ export type Message = {
   reasoning_content?: string;
 };
 
+export type StreamError = {
+  code: string;
+  message: string;
+};
+
 export type ParsedChunk = {
   content?: string;
   thinking?: string;
@@ -41,6 +46,7 @@ export type ParsedChunk = {
   done: boolean;
   usage?: TokenUsage;
   usageMode?: UsageMode;
+  error?: StreamError;
 };
 
 export type ProviderError = {

@@ -54,7 +54,7 @@ export function formatStreamChunk(
     ? (chunk.finish_reason ?? "stop")
     : (chunk.finish_reason ?? null);
 
-  const obj: OpenAIStreamChunk = {
+  const obj: OpenAIStreamChunk & { error?: { code: string; message: string } } = {
     id,
     object: "chat.completion.chunk",
     created: Math.floor(Date.now() / 1000),
@@ -67,9 +67,17 @@ export function formatStreamChunk(
       },
     ],
     ...(chunk.usage ? { usage: toOpenAIUsage(chunk.usage) } : {}),
+    ...(chunk.error ? { error: chunk.error } : {}),
   };
 
-  return `data: ${JSON.stringify(obj)}\n\n`;
+  const data = `data: ${JSON.stringify(obj)}\n\n`;
+
+  // Emit SSE error event type so consumers can detect and handle it.
+  if (chunk.error) {
+    return `event: error\n${data}`;
+  }
+
+  return data;
 }
 
 export function formatStreamDone(): string {
