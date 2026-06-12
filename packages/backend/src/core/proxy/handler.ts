@@ -31,6 +31,40 @@ interface StreamRetryContext {
   timeout: number;
 }
 
+/**
+ * Try to extract a meaningful error message from leftover stream buffer.
+ * Provider may return a non-SSE JSON error body instead of SSE chunks.
+ */
+function extractProviderError(raw: string): { code: string; message: string } | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  try {
+    const obj = JSON.parse(trimmed) as Record<string, unknown>;
+    // OpenAI-style: { error: { message, code, type } }
+    if (obj.error && typeof obj.error === "object") {
+      const err = obj.error as Record<string, unknown>;
+      return {
+        code: typeof err.code === "string" ? err.code : "provider_error",
+        message: typeof err.message === "string" ? err.message : JSON.stringify(obj.error),
+      };
+    }
+    // Flat style: { message, code } or { detail, error }
+    const msg = typeof obj.message === "string" ? obj.message
+      : typeof obj.detail === "string" ? obj.detail
+      : typeof obj.error === "string" ? obj.error
+      : null;
+    if (msg) {
+      return { code: typeof obj.code === "string" ? obj.code : "provider_error", message: msg };
+    }
+  } catch {
+    // Not JSON — return raw text as message if non-empty
+    if (trimmed.length <= 500) {
+      return { code: "provider_error", message: `Provider returned non-SSE response: ${trimmed}` };
+    }
+  }
+  return null;
+}
+
 function generateCorrelationId(): string {
   const bytes = new Uint8Array(8);
   crypto.getRandomValues(bytes);
@@ -555,12 +589,18 @@ export class ProxyHandler {
                 streamClosed = true;
                 clearInterval(keepaliveTimer);
                 responseStatus = 502;
+                const providerErr = extractProviderError(buffer);
+                if (providerErr) {
+                  console.log(`[STREAM-PROVIDER-ERROR] ${id} provider returned non-SSE response: code=${providerErr.code} message=${providerErr.message}`);
+                }
                 try {
                   const errorChunk = formatStreamChunk(id, providerModel, {
                     done: true,
                     finish_reason: "error",
-                    content: "⚠ Stream ended unexpectedly. The provider closed the connection without completing the response. Please retry.",
-                    error: {
+                    content: providerErr
+                      ? `⚠ Provider error: ${providerErr.message}`
+                      : "⚠ Stream ended unexpectedly. The provider closed the connection without completing the response. Please retry.",
+                    error: providerErr ?? {
                       code: "stream_error",
                       message: "Provider stream closed without sending finish_reason",
                     },
@@ -576,16 +616,22 @@ export class ProxyHandler {
                 // Abnormal close — stream closed without explicit done chunk.
                 // Content was already sent to client, can't retry cleanly.
                 // Send error chunk so client receives fault signal.
-                console.log(`[STREAM-DIAG] ${id} buffer on close (content=${String(contentEnqueued)}): ${JSON.stringify(buffer.slice(0, 200))}`);
                 streamClosed = true;
                 clearInterval(keepaliveTimer);
                 responseStatus = 502;
+                const providerErr = extractProviderError(buffer);
+                if (providerErr) {
+                  console.log(`[STREAM-PROVIDER-ERROR] ${id} provider returned non-SSE response: code=${providerErr.code} message=${providerErr.message}`);
+                }
+                console.log(`[STREAM-DIAG] ${id} buffer on close (content=${String(contentEnqueued)}): ${JSON.stringify(buffer.slice(0, 200))}`);
                 try {
                   const errorChunk = formatStreamChunk(id, providerModel, {
                     done: true,
                     finish_reason: "error",
-                    content: "⚠ Stream ended unexpectedly. The provider closed the connection without completing the response. Please retry.",
-                    error: {
+                    content: providerErr
+                      ? `⚠ Provider error: ${providerErr.message}`
+                      : "⚠ Stream ended unexpectedly. The provider closed the connection without completing the response. Please retry.",
+                    error: providerErr ?? {
                       code: "stream_error",
                       message: "Provider stream closed without sending finish_reason",
                     },
