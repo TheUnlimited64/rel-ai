@@ -1493,9 +1493,13 @@ describe("ProxyHandler", () => {
       const lastEvent = dataEvents[dataEvents.length - 1];
       // Error chunk has finish_reason "error", not "stop"
       expect((lastEvent.chunk.choices as Array<{ finish_reason: string }>)[0].finish_reason).toBe("error");
-      // Content delta carries JSON with stream_error code
+      // Content delta carries human-friendly error message
       const content = (lastEvent.chunk.choices as Array<{ delta: { content?: string } }>)[0].delta?.content ?? "";
-      expect(content).toContain("stream_error");
+      expect(content).toContain("Stream ended unexpectedly");
+      // Structured error is in the top-level error field
+      const error = (lastEvent.chunk as Record<string, unknown>).error as { code: string; message: string } | undefined;
+      expect(error).toBeDefined();
+      expect(error?.code).toBe("stream_error");
       expect(capturedLog).toBeDefined();
       expect((capturedLog as Record<string, unknown>).status).toBe(502);
     });
